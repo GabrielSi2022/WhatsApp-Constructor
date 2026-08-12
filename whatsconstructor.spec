@@ -8,9 +8,9 @@ datas += collect_data_files('whisper')
 a = Analysis(
     ['whatsconstructor.py'],
     pathex=[],
-    binaries=[],
+    binaries=[('ffmpeg.exe', '.')],
     datas=datas,
-    hiddenimports=['defusedxml'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

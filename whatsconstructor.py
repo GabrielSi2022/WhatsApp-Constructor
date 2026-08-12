@@ -57,13 +57,13 @@ class InterceptadorDownload:
         if self.original_stderr is not None:
             self.original_stderr.flush()
 
-# --- CLASSE DO GERADOR DE PDF PERICIAL ---
+# --- CLASSES DO GERADOR DE PDF PERICIAL ---
 class RelatorioForensePDF(FPDF):
     def header(self):
         self.set_font('helvetica', 'B', 14)
         self.cell(0, 10, 'RELATÓRIO TÉCNICO DE INDEXAÇÃO E INTEGRIDADE DE DADOS', 0, 1, 'C')
         self.set_font('helvetica', 'I', 10)
-        self.cell(0, 5, 'Análise Preliminar de Extração Lógica - WhatsApp', 0, 1, 'C')
+        self.cell(0, 5, 'Extração Lógica - WhatsApp', 0, 1, 'C')
         self.line(10, 28, 200, 28)
         self.ln(10)
 
@@ -118,7 +118,9 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro
         "Este software não realiza extração física ou invasiva do dispositivo móvel. Sua função limita-se a "
         "processar o material previamente exportado, reconstruir a cadeia de leitura de forma legível (HTML) "
         "e calcular as assinaturas digitais (Hash SHA-256) para fins de preservação da cadeia de custódia e "
-        "imutabilidade das provas. Transcrições de áudio, quando aplicáveis, são processadas offline."
+        "imutabilidade das provas. Para consolidar essa garantia, o sistema gera automaticamente um documento "
+        "dedicado (identificado pelo sufixo '_Hashes_Gerais.txt'), que centraliza o resumo criptográfico dos "
+        "principais artefatos processados. Transcrições de áudio, quando aplicáveis, são processadas offline."
     )
     pdf.multi_cell(0, 5, metodologia_texto)
     pdf.ln(5)
@@ -141,7 +143,7 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro
     if incluir_certidao:
         pdf.ln(15)
         pdf.set_font('helvetica', 'B', 12)
-        pdf.cell(0, 10, '4. CERTIDÃO DE INDEXAÇÃO', 0, 1)
+        pdf.cell(0, 10, '4. CERTIDÃO DE EXTRAÇÃO E INDEXAÇÃO', 0, 1)
         pdf.set_font('helvetica', '', 10)
         
         certidao_texto = (
@@ -154,15 +156,84 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro
         )
         pdf.multi_cell(0, 5, certidao_texto)
         
-        pdf.ln(25)
+        # --- NOVO BLOCO DE ASSINATURA PROTEGIDO CONTRA QUEBRA DE PÁGINA ---
+        if pdf.get_y() > 230:
+            pdf.add_page()
+        else:
+            pdf.ln(20) 
+            
+        # Adicionando a Data Oficial alinhada à direita
+        meses = {
+            "01": "janeiro", "02": "fevereiro", "03": "março", "04": "abril",
+            "05": "maio", "06": "junho", "07": "julho", "08": "agosto",
+            "09": "setembro", "10": "outubro", "11": "novembro", "12": "dezembro"
+        }
+        partes_data = data_hora_atual.split(" ")[0].split("/")
+        data_extenso = f"{partes_data[0]} de {meses[partes_data[1]]} de {partes_data[2]}"
         
+        pdf.set_font('helvetica', '', 11)
+        pdf.cell(0, 5, data_extenso, 0, 1, 'R')
+        pdf.ln(25) # Espaço mais generoso para a assinatura física
+        
+        # Desenhando a linha e as credenciais centralizadas
         pdf.line(55, pdf.get_y(), 155, pdf.get_y())
         pdf.ln(2)
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
         pdf.set_font('helvetica', '', 10)
         pdf.cell(0, 5, f"{dados_certidao['cargo']} - MASP/Matrícula: {dados_certidao['masp']}", 0, 1, 'C')
+        
+    pdf.output(caminho_saida)
 
+def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certidao, data_hora_atual, incluir_certidao):
+    pdf = RelatorioForensePDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    pdf.set_font('helvetica', 'B', 14)
+    pdf.cell(0, 10, 'ANEXO - RELAÇÃO DE INTEGRANTES DA CONVERSA', 0, 1, 'C')
+    pdf.ln(5)
+    
+    pdf.set_font('helvetica', '', 10)
+    pdf.cell(0, 6, f"Data/Hora de Geração: {data_hora_atual}", 0, 1)
+    pdf.cell(0, 6, f"Referência da Evidência: {nomes_extras['relatorio']}", 0, 1)
+    pdf.ln(10)
+    
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 8, f"Total de Interlocutores Identificados no Relatório: {len(remetentes)}", 0, 1)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    pdf.set_font('helvetica', '', 11)
+    for i, rem in enumerate(sorted(remetentes), 1):
+        pdf.cell(0, 8, f"{i}. {rem}", 0, 1)
+        
+    if incluir_certidao:
+        # --- NOVO BLOCO DE ASSINATURA PROTEGIDO ---
+        if pdf.get_y() > 230:
+            pdf.add_page()
+        else:
+            pdf.ln(20)
+            
+        meses = {
+            "01": "janeiro", "02": "fevereiro", "03": "março", "04": "abril",
+            "05": "maio", "06": "junho", "07": "julho", "08": "agosto",
+            "09": "setembro", "10": "outubro", "11": "novembro", "12": "dezembro"
+        }
+        partes_data = data_hora_atual.split(" ")[0].split("/")
+        data_extenso = f"{partes_data[0]} de {meses[partes_data[1]]} de {partes_data[2]}"
+        
+        pdf.set_font('helvetica', '', 11)
+        pdf.cell(0, 5, data_extenso, 0, 1, 'R')
+        pdf.ln(25) 
+
+        pdf.line(55, pdf.get_y(), 155, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
+        pdf.set_font('helvetica', '', 10)
+        pdf.cell(0, 5, f"{dados_certidao['cargo']} - MASP/Matrícula: {dados_certidao['masp']}", 0, 1, 'C')
+        
     pdf.output(caminho_saida)
 
 def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcrever_video, nome_modelo, incluir_certidao, dados_certidao, nomes_extras, callback_progresso):
@@ -190,7 +261,6 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     mensagens = []
     arquivos_midia_referenciados = []
 
-    # Regex expandida para capturar datas com ou sem vírgulas e segundos (novo padrão do Android/WhatsApp)
     regex_android = r"^(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*?): (.*)"
     regex_ios = r"^\[(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}:\d{2})\] (.*?): (.*)"
     regex_android_sys = r"^(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*)"
@@ -211,7 +281,6 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
                 remetente_limpo = limpar_nome_arquivo(remetente)
                 conteudo_limpo = conteudo.strip()
                 
-                # --- INTERCEPTADOR DE MENSAGENS DE SISTEMA (FALSOS REMETENTES) ---
                 msg_sistema_markers = [
                     "as mensagens e ligações são protegidas",
                     "messages and calls are end-to-end encrypted",
@@ -226,8 +295,7 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
                         "tipo": "sistema",
                         "nome_arquivo": None
                     })
-                    continue # Pula para a próxima linha sem adicionar como mensagem normal
-                # -----------------------------------------------------------------
+                    continue 
 
                 nome_arquivo = None
                 tipo = "texto"
@@ -305,6 +373,8 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
         registro_hashes.append(f"[FICHEIRO DE TEXTO ORIGEM] {os.path.basename(caminho_txt_destino)}\nSHA256: {hash_txt}\n")
     except Exception as e:
         registro_hashes.append(f"[FICHEIRO DE TEXTO ORIGEM] Falha ao copiar original: {e}\n")
+
+    remetentes_validos = list(set(msg["remetente"] for msg in mensagens if msg.get("tipo") != "sistema" and msg.get("remetente")))
 
     extensoes_lista = []
     if transcrever_audio:
@@ -396,13 +466,29 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
 
     nome_arquivo_html = f"{nomes_extras['relatorio']}_Leitor_Forense.html"
     nome_arquivo_pdf = f"{nomes_extras['relatorio']}_Relatorio_Análise.pdf"
+    nome_arquivo_pdf_integrantes = f"{nomes_extras['relatorio']}_Relacao_Integrantes.pdf"
 
+    # 1. Geração do HTML
     caminho_html = os.path.join(pasta_saida, nome_arquivo_html)
-    gerar_html(mensagens, caminho_html, mapa_nomes_reais, nomes_extras)
+    gerar_html(mensagens, caminho_html, mapa_nomes_reais, nomes_extras, remetentes_validos)
     
     hash_html = calcular_hash_sha256(caminho_html)
     registro_hashes.append(f"\n[ARQUIVO RECONSTRUÍDO - HTML] {nome_arquivo_html}\nSHA256: {hash_html}\n")
 
+    # 2. Geração do PDF de Integrantes (NOVO)
+    caminho_pdf_integrantes = os.path.join(pasta_saida, nome_arquivo_pdf_integrantes)
+    gerar_pdf_integrantes(
+        caminho_pdf_integrantes, 
+        remetentes_validos, 
+        nomes_extras, 
+        dados_certidao, 
+        data_hora_atual, 
+        incluir_certidao
+    )
+    hash_pdf_integrantes = calcular_hash_sha256(caminho_pdf_integrantes)
+    registro_hashes.append(f"\n[ANEXO - RELAÇÃO DE INTEGRANTES] {nome_arquivo_pdf_integrantes}\nSHA256: {hash_pdf_integrantes}\n")
+
+    # 3. Geração do PDF Principal de Análise
     caminho_pdf = os.path.join(pasta_saida, nome_arquivo_pdf)
     gerar_pdf_pericial(
         caminho_pdf, 
@@ -429,7 +515,10 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
         f"2. LEITOR FORENSE RECONSTRUÍDO (Interface HTML Interativa)\n"
         f"   Nome: {nome_arquivo_html}\n"
         f"   Hash: {hash_html}\n\n"
-        f"3. RELATÓRIO ANÁLISE (Documento Formal)\n"
+        f"3. ANEXO - RELAÇÃO DE INTEGRANTES (Documento Auxiliar)\n"
+        f"   Nome: {nome_arquivo_pdf_integrantes}\n"
+        f"   Hash: {hash_pdf_integrantes}\n\n"
+        f"4. RELATÓRIO ANÁLISE (Documento Formal)\n"
         f"   Nome: {nome_arquivo_pdf}\n"
         f"   Hash: {hash_pdf}\n\n"
         f"===============================================================\n"
@@ -442,11 +531,9 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     with open(caminho_txt_hashes, "w", encoding="utf-8") as f:
         f.write(conteudo_hashes)
 
-def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
+def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remetentes_validos):
     titular_oficial = ""
     alvo2_oficial = ""
-    
-    remetentes_validos = list(set(msg["remetente"] for msg in lista_mensagens if msg.get("tipo") != "sistema" and msg.get("remetente")))
     
     if nomes_extras["titular_nome"]:
         nome_titular_limpo = nomes_extras["titular_nome"].strip().lower()
@@ -474,7 +561,6 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
                 alvo2_oficial = rem
                 break
 
-    # Cores mais vibrantes e claras adaptadas para leitura no Tema Escuro
     cores_disponiveis = [
         "#53bdeb", "#ff7a7a", "#ff9f5e", "#d874ff", "#44c688", 
         "#ffb02e", "#c5a47e", "#9fa0ff", "#a370e7", "#ff6b9e", 
@@ -487,13 +573,14 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             mapa_cores[rem] = cores_disponiveis[i_cor % len(cores_disponiveis)]
             i_cor += 1
 
+    nome_pdf_integrantes = f"{nomes_extras['relatorio']}_Relacao_Integrantes.pdf"
+
     html_content = f"""<!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <title>{nomes_extras["relatorio"]}</title>
         <style>
-            /* TEMA ESCURO GERAL (Inspirado no WhatsApp Web Dark) */
             body {{ font-family: 'Segoe UI', -apple-system, Arial, sans-serif; background-color: #111b21; margin: 0; padding: 0; color: #e9edef; }}
             
             .header {{ background-color: #202c33; color: #e9edef; position: sticky; top: 0; z-index: 1001; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; flex-direction: column; border-bottom: 1px solid #2a3942; }}
@@ -508,11 +595,35 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             .tab-content {{ display: none; }}
             .tab-content.active {{ display: block; }}
             
-            .chat-container {{ max-width: 850px; margin: 0 auto; padding: 20px; box-sizing: border-box; }}
+            .main-wrapper {{ display: flex; width: 100%; align-items: flex-start; }}
             
-            /* MENU MODERNO E BARRA DE PESQUISA */
+            .sidebar {{ 
+                width: 280px; min-width: 280px; background-color: #111b21; border-right: 1px solid #2a3942; 
+                padding: 15px; height: calc(100vh - 75px); overflow-y: auto; position: sticky; top: 75px; 
+                box-sizing: border-box; 
+            }}
+            
+            .btn-export-list {{
+                background-color: #00a884; color: #111b21; padding: 12px; border-radius: 8px; border: none; width: 100%;
+                cursor: pointer; font-weight: bold; font-size: 13px; margin-bottom: 20px; text-transform: uppercase;
+                transition: background 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                display: block; text-align: center; text-decoration: none; box-sizing: border-box; /* Adicionado para suportar tag <a> */
+            }}
+            .btn-export-list:hover {{ background-color: #00c298; }}
+            
+            .sidebar-title {{ color: #8696a0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }}
+            
+            .participant-item {{
+                padding: 10px 12px; border-radius: 8px; color: #e9edef; font-size: 14px; margin-bottom: 5px;
+                cursor: pointer; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }}
+            .participant-item:hover {{ background-color: #202c33; }}
+            .participant-item.active-filter {{ background-color: #202c33; color: #00a884; font-weight: 600; border-left: 4px solid #00a884; border-radius: 4px; }}
+            
+            .chat-area {{ flex-grow: 1; padding: 20px; max-width: 950px; margin: 0 auto; box-sizing: border-box; }}
+            
             .search-bar-container {{ 
-                position: sticky; top: 110px; 
+                position: sticky; top: 90px; 
                 background: #202c33; 
                 padding: 12px 18px; border-radius: 12px; 
                 box-shadow: 0 6px 16px rgba(0,0,0,0.4); 
@@ -561,7 +672,6 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             
             .date-label {{ color: #8696a0; font-size: 13px; font-weight: 500; }}
 
-            /* BALÕES DE CHAT TEMA ESCURO */
             .msg-wrapper {{ display: flex; margin-bottom: 6px; width: 100%; }}
             .titular {{ justify-content: flex-end; }}
             .outro {{ justify-content: flex-start; }}
@@ -585,7 +695,6 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             .msg-highlight {{ border: 2px solid #00a884 !important; background-color: rgba(0, 168, 132, 0.15) !important; }}
             .msg-active {{ box-shadow: 0 0 15px 5px rgba(0, 168, 132, 0.4) !important; }}
             
-            /* GALERIA TEMA ESCURO */
             .galeria-container {{ max-width: 1100px; margin: 0 auto; padding: 25px; }}
             .galeria-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }}
             .galeria-item {{ background: #202c33; padding: 12px; border-radius: 10px; box-shadow: 0 3px 6px rgba(0,0,0,0.2); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; transition: transform 0.2s; border: 1px solid #2a3942; }}
@@ -596,11 +705,15 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             .doc-icon {{ font-size: 35px; word-break: break-all; margin: 20px 0; }}
             .doc-icon a {{ font-size: 13px; text-decoration: none; color: #00a884; display: block; margin-top: 8px; }}
             
-            /* IMPRESSÃO (Mantém fundo branco para não gastar tinta) */
+            @media (max-width: 900px) {{
+                .main-wrapper {{ flex-direction: column; }}
+                .sidebar {{ width: 100%; height: auto; border-right: none; border-bottom: 1px solid #2a3942; position: relative; top: 0; }}
+            }}
+            
             @media print {{
-                .header, .search-bar-container, .tab-buttons {{ display: none !important; }}
+                .header, .search-bar-container, .tab-buttons, .sidebar {{ display: none !important; }}
                 body {{ background-color: white !important; color: black !important; }}
-                .chat-container {{ padding: 0 !important; max-width: 100% !important; }}
+                .chat-container, .chat-area {{ padding: 0 !important; max-width: 100% !important; }}
                 .msg-wrapper {{ page-break-inside: avoid; }}
                 .mensagem {{ box-shadow: none !important; border: 1px solid #ddd; background-color: white !important; }}
                 .texto, .timestamp, .remetente {{ color: black !important; }}
@@ -623,41 +736,56 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
         </div>
         
         <div id="tab-chat" class="tab-content active">
-            <div class="chat-container">
-                <div class="search-bar-container">
-                    
-                    <div class="filter-group">
-                        <input type="text" id="searchInput" class="search-box" placeholder="🔍 Localizar na conversa...">
-                        <span id="searchCount" class="search-count">0/0</span>
-                        <button id="btnPrev" class="btn-icon" disabled onclick="navegarBusca(-1)">▲</button>
-                        <button id="btnNext" class="btn-icon" disabled onclick="navegarBusca(1)">▼</button>
-                    </div>
-                    
-                    <div class="divider"></div>
-                    
-                    <div class="filter-group">
-                        <input type="date" id="dataInicio" class="date-input" title="Data Inicial">
-                        <span class="date-label">até</span>
-                        <input type="date" id="dataFim" class="date-input" title="Data Final">
-                        <button class="btn-nav btn-filter" onclick="filtrarPorData()">Filtrar</button>
-                        <button class="btn-nav btn-clear" onclick="limparFiltroData()">Limpar</button>
-                    </div>
-                    
-                    <div class="filter-group" style="margin-left: auto;">
-                        <button class="btn-nav btn-pdf" onclick="window.print()">🖨️ Salvar PDF</button>
-                    </div>
-
+            <div class="main-wrapper">
+                
+                <div class="sidebar">
+                    <a href="{nome_pdf_integrantes}" target="_blank" class="btn-export-list">📄 Exportar Lista (PDF)</a>
+                    <h3 class="sidebar-title">Integrantes ({len(remetentes_validos)})</h3>
+                    <div class="participant-item active-filter" onclick="filtrarRemetente('TODOS')" data-id="TODOS">🧾 Exibir Todos</div>
+    """
+    
+    for rem in sorted(remetentes_validos):
+        rem_safe = rem.replace("'", "\\'").replace('"', '&quot;')
+        html_content += f'<div class="participant-item" onclick="filtrarRemetente(\'{rem_safe}\')" data-id="{rem_safe}">👤 {rem}</div>'
+    
+    html_content += f"""
                 </div>
                 
-                <div id="mensagens-container">
+                <div class="chat-area">
+                    <div class="search-bar-container">
+                        <div class="filter-group">
+                            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Localizar na conversa...">
+                            <span id="searchCount" class="search-count">0/0</span>
+                            <button id="btnPrev" class="btn-icon" disabled onclick="navegarBusca(-1)">▲</button>
+                            <button id="btnNext" class="btn-icon" disabled onclick="navegarBusca(1)">▼</button>
+                        </div>
+                        
+                        <div class="divider"></div>
+                        
+                        <div class="filter-group">
+                            <input type="date" id="dataInicio" class="date-input" title="Data Inicial">
+                            <span class="date-label">até</span>
+                            <input type="date" id="dataFim" class="date-input" title="Data Final">
+                            <button class="btn-nav btn-filter" onclick="aplicarFiltrosGerais()">Filtrar</button>
+                            <button class="btn-nav btn-clear" onclick="limparFiltros()">Limpar</button>
+                        </div>
+                        
+                        <div class="filter-group" style="margin-left: auto;">
+                            <button class="btn-nav btn-pdf" onclick="window.print()">🖨️ Salvar Chat PDF</button>
+                        </div>
+                    </div>
+                    
+                    <div id="mensagens-container">
     """
 
     chat_html = ""
     galeria_html = '<div class="galeria-container"><div class="galeria-grid">'
     
     for msg in lista_mensagens:
+        rem_attr = msg["remetente"].replace("'", "\\'").replace('"', '&quot;') if msg.get("remetente") else ""
+        
         if msg.get("tipo") == "sistema":
-            chat_html += f'<div class="msg-wrapper sistema-wrapper"><div class="msg-sistema">{msg["conteudo"]}</div></div>'
+            chat_html += f'<div class="msg-wrapper sistema-wrapper" data-remetente=""><div class="msg-sistema">{msg["conteudo"]}</div></div>'
         else:
             classe_lado = "titular" if msg["remetente"] == titular_oficial else "outro"
             cor_rem = mapa_cores.get(msg["remetente"], "#53bdeb")
@@ -668,7 +796,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
             elif alvo2_oficial and msg["remetente"] == alvo2_oficial and nomes_extras["alvo2_sufixo"]:
                 nome_exibicao = f"{msg['remetente']} ({nomes_extras['alvo2_sufixo']})"
 
-            chat_html += f'<div class="msg-wrapper {classe_lado}"><div class="mensagem" id="msg-{lista_mensagens.index(msg)}">'
+            chat_html += f'<div class="msg-wrapper {classe_lado}" data-remetente="{rem_attr}"><div class="mensagem" id="msg-{lista_mensagens.index(msg)}">'
             
             if classe_lado == "outro":
                 chat_html += f'<span class="remetente" style="color: {cor_rem};">{nome_exibicao}</span>'
@@ -708,7 +836,8 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
     
     html_content += chat_html
     
-    html_content += """
+    html_content += f"""
+                    </div>
                 </div>
             </div>
         </div>
@@ -730,55 +859,113 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
                 document.getElementById('btn-tab-' + tabName).classList.add('active');
             }
 
+
             let matches = [];
             let currentIndex = -1;
+            let currentRemetente = 'TODOS';
 
-            document.getElementById("searchInput").addEventListener("input", function() {
-                let filter = this.value.toLowerCase();
-                let mensagens = document.getElementsByClassName("mensagem");
+            function filtrarRemetente(remetente) {
+                currentRemetente = remetente;
+                document.querySelectorAll('.participant-item').forEach(el => el.classList.remove('active-filter'));
                 
-                matches = [];
-                currentIndex = -1;
-                for (let i = 0; i < mensagens.length; i++) {
-                    mensagens[i].classList.remove("msg-highlight", "msg-active");
-                }
-
-                if (filter.trim() === "") {
-                    atualizarInterface(false);
-                    return;
-                }
-
-                for (let i = 0; i < mensagens.length; i++) {
-                    if (mensagens[i].parentElement.style.display === "none") continue;
-                    
-                    let textoMensagem = mensagens[i].innerText || mensagens[i].textContent;
-                    if (textoMensagem.toLowerCase().indexOf(filter) > -1) {
-                        mensagens[i].classList.add("msg-highlight");
-                        matches.push(mensagens[i]);
+                let items = document.querySelectorAll('.participant-item');
+                for(let i=0; i<items.length; i++){
+                    if(items[i].getAttribute('data-id') === remetente){
+                        items[i].classList.add('active-filter');
+                        break;
                     }
                 }
+                aplicarFiltrosGerais();
+            }
 
-                if (matches.length > 0) {
-                    currentIndex = 0;
-                    atualizarInterface(true);
-                    focarMensagem();
-                } else {
-                    atualizarInterface(false);
+            function aplicarFiltrosGerais() {
+                let strInicio = document.getElementById("dataInicio").value;
+                let strFim = document.getElementById("dataFim").value;
+                let textoBusca = document.getElementById("searchInput").value.toLowerCase().trim();
+                
+                let dataInicio = strInicio ? new Date(strInicio + "T00:00:00") : null;
+                let dataFim = strFim ? new Date(strFim + "T23:59:59") : null;
+                
+                let wrappers = document.getElementsByClassName("msg-wrapper");
+                matches = [];
+                currentIndex = -1;
+                
+                for(let i = 0; i < wrappers.length; i++) {
+                    let wrap = wrappers[i];
+                    let isSistema = wrap.classList.contains("sistema-wrapper");
+                    let msgRemetente = wrap.getAttribute("data-remetente");
+                    
+                    let passaRemetente = true;
+                    if (currentRemetente !== 'TODOS') {
+                        if (isSistema || msgRemetente !== currentRemetente) {
+                            passaRemetente = false;
+                        }
+                    }
+                    
+                    let passaData = true;
+                    if (!isSistema) {
+                        let timeSpan = wrap.querySelector(".timestamp");
+                        if (timeSpan) {
+                            let timeText = timeSpan.innerText.trim();
+                            let datePart = timeText.split(" ")[0].replace("[", "").replace(",", "");
+                            let partes = datePart.split("/");
+                            if (partes.length === 3) {
+                                let msgData = new Date(partes[2], partes[1] - 1, partes[0]);
+                                if (dataInicio && msgData < dataInicio) passaData = false;
+                                if (dataFim && msgData > dataFim) passaData = false;
+                            }
+                        }
+                    }
+                    
+                    let mostrar = passaRemetente && passaData;
+                    wrap.style.display = mostrar ? "flex" : "none";
+                    
+                    let msgBox = wrap.querySelector('.mensagem') || wrap.querySelector('.msg-sistema');
+                    if (msgBox) msgBox.classList.remove("msg-highlight", "msg-active");
+                    
+                    if (mostrar && textoBusca !== "" && msgBox) {
+                        let texto = msgBox.innerText || msgBox.textContent;
+                        if (texto.toLowerCase().indexOf(textoBusca) > -1) {
+                            msgBox.classList.add("msg-highlight");
+                            matches.push(msgBox);
+                        }
+                    }
                 }
-            });
+                
+                if (textoBusca !== "") {
+                    if (matches.length > 0) {
+                        currentIndex = 0;
+                        atualizarInterfaceBusca(true);
+                        focarMensagem();
+                    } else {
+                        atualizarInterfaceBusca(false);
+                    }
+                } else {
+                    document.getElementById("searchCount").innerText = "0/0";
+                    document.getElementById("btnPrev").disabled = true;
+                    document.getElementById("btnNext").disabled = true;
+                }
+            }
+
+            function limparFiltros() {
+                document.getElementById("dataInicio").value = "";
+                document.getElementById("dataFim").value = "";
+                document.getElementById("searchInput").value = "";
+                filtrarRemetente('TODOS');
+            }
+
+            document.getElementById("searchInput").addEventListener("input", aplicarFiltrosGerais);
 
             function navegarBusca(direcao) {
                 if (matches.length === 0) return;
-                
                 currentIndex += direcao;
                 if (currentIndex < 0) currentIndex = matches.length - 1;
                 if (currentIndex >= matches.length) currentIndex = 0;
-                
-                atualizarInterface(true);
+                atualizarInterfaceBusca(true);
                 focarMensagem();
             }
 
-            function atualizarInterface(temResultados) {
+            function atualizarInterfaceBusca(temResultados) {
                 let btnPrev = document.getElementById("btnPrev");
                 let btnNext = document.getElementById("btnNext");
                 let contador = document.getElementById("searchCount");
@@ -800,62 +987,41 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras):
                 alvo.classList.add("msg-active");
                 alvo.scrollIntoView({behavior: "smooth", block: "center"});
             }
-            
-            function filtrarPorData() {
-                let strInicio = document.getElementById("dataInicio").value;
-                let strFim = document.getElementById("dataFim").value;
-                
-                let dataInicio = strInicio ? new Date(strInicio + "T00:00:00") : null;
-                let dataFim = strFim ? new Date(strFim + "T23:59:59") : null;
-                
-                let wrappers = document.getElementsByClassName("msg-wrapper");
-                
-                for(let i = 0; i < wrappers.length; i++) {
-                    let wrap = wrappers[i];
-                    if(wrap.classList.contains("sistema-wrapper")) continue;
-                    
-                    let timeSpan = wrap.querySelector(".timestamp");
-                    if(!timeSpan) continue;
-                    
-                    let timeText = timeSpan.innerText.trim();
-                    let datePart = timeText.split(" ")[0].replace("[", "").replace(",", "");
-                    
-                    let partes = datePart.split("/");
-                    if(partes.length === 3) {
-                        let msgData = new Date(partes[2], partes[1] - 1, partes[0]);
-                        
-                        let mostrar = true;
-                        if(dataInicio && msgData < dataInicio) mostrar = false;
-                        if(dataFim && msgData > dataFim) mostrar = false;
-                        
-                        wrap.style.display = mostrar ? "flex" : "none";
-                    }
-                }
-                
-                document.getElementById("searchInput").value = "";
-                document.getElementById("searchInput").dispatchEvent(new Event('input'));
-            }
-            
-            function limparFiltroData() {
-                document.getElementById("dataInicio").value = "";
-                document.getElementById("dataFim").value = "";
-                
-                let wrappers = document.getElementsByClassName("msg-wrapper");
-                for(let i = 0; i < wrappers.length; i++) {
-                    if(!wrappers[i].classList.contains("sistema-wrapper")) {
-                        wrappers[i].style.display = "flex";
-                    }
-                }
-                
-                document.getElementById("searchInput").value = "";
-                document.getElementById("searchInput").dispatchEvent(new Event('input'));
-            }
         </script>
     </body></html>
     """
 
     with open(caminho_saida, "w", encoding="utf-8") as f:
         f.write(html_content)
+
+# --- CLASSE PARA OS BALÕES DE AJUDA (TOOLTIPS) ---
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        self.widget.bind("<Enter>", self.show_tooltip)
+        self.widget.bind("<Leave>", self.hide_tooltip)
+
+    def show_tooltip(self, event=None):
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        self.tooltip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True) # Remove as bordas da janela
+        tw.wm_geometry(f"+{x}+{y}")
+        
+        # Estilo da caixinha de ajuda
+        label = tk.Label(tw, text=self.text, justify='left',
+                         background="#202c33", foreground="#e9edef", # Cores escuras para combinar com o seu tema
+                         relief='solid', borderwidth=1,
+                         font=("Segoe UI", 9, "normal"), padx=8, pady=4)
+        label.pack(ipadx=1)
+
+    def hide_tooltip(self, event=None):
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 # --- INTERFACE GRÁFICA (GUI) ---
 class AppWhatsAppForensic:
@@ -865,7 +1031,6 @@ class AppWhatsAppForensic:
         self.root.geometry("680x880") 
         self.root.configure(bg="#f4f6f9")
 
-        # Variáveis de Interface
         self.pasta_entrada = tk.StringVar()
         self.pasta_saida = tk.StringVar()
         self.usar_transcricao_audio = tk.BooleanVar(value=False)
@@ -883,7 +1048,6 @@ class AppWhatsAppForensic:
 
         self.estilizar_interface()
 
-        # --- SETUP DA BARRA DE ROLAGEM PRINCIPAL ---
         self.main_container = tk.Frame(root, bg="#f4f6f9")
         self.main_container.pack(fill="both", expand=True)
 
@@ -907,14 +1071,11 @@ class AppWhatsAppForensic:
             lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
         )
 
-        # Habilita rolagem com o mouse
         def _on_mousewheel(event):
             if event.delta:
                 self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         self.root.bind_all("<MouseWheel>", _on_mousewheel)
-        # ---------------------------------------------
 
-        # Adiciona os Frames dentro do frame rolável (self.scrollable_frame)
         frame_ident = tk.LabelFrame(self.scrollable_frame, text=" Dados do Relatório & Certidão ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
         frame_ident.pack(fill="x", pady=(0, 10))
 
@@ -928,16 +1089,21 @@ class AppWhatsAppForensic:
         self.criar_label_entry(frame_ident, "Cargo / Função:", self.cargo_relator, 3, 45)
         self.criar_label_entry(frame_ident, "MASP / Matrícula:", self.masp_relator, 4, 25)
 
-        frame_alvos = tk.LabelFrame(self.scrollable_frame, text=" Identificação de Alvos no HTML (Opcional) ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_alvos = tk.LabelFrame(self.scrollable_frame, text=" Identificação de Alvos no HTML  ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
         frame_alvos.pack(fill="x", pady=(0, 10))
         
-        self.criar_label_entry(frame_alvos, "Titular (Fica na Direita):", self.nome_titular, 0, 30)
-        self.criar_label_entry(frame_alvos, "Adicionar à frente do Titular:", self.sufixo_titular, 1, 30, "(Ex: Número de Telefone)")
+        # Textos explicativos para as Tooltips
+        dica_titular = "O Titular é o dono do aparelho periciado.\nAs mensagens dele aparecerão alinhadas à direita\n(cor verde), simulando a tela real do aplicativo."
+        dica_sufixo_titular = "Um texto opcional que aparecerá ao lado do nome do titular\nno relatório. Ex: João (Alvo Principal) ou João (551199999999)"
+        dica_alvo2 = "Identifica automaticamente um alvo específico\nna lista de contatos, destacando o nome dele nas conversas."
+        
+        self.criar_label_entry(frame_alvos, "Titular (Fica na Direita):", self.nome_titular, 0, 30, tooltip_text=dica_titular)
+        self.criar_label_entry(frame_alvos, "Adicionar à frente do Titular: (Opcional)", self.sufixo_titular, 1, 30, "(Ex: Número de Telefone)", tooltip_text=dica_sufixo_titular)
         
         ttk.Separator(frame_alvos, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=8)
         
-        self.criar_label_entry(frame_alvos, "Nome 2º Alvo (Interlocutor):", self.nome_alvo2, 3, 30, "(Digite apenas parte do nome)")
-        self.criar_label_entry(frame_alvos, "Adicionar à frente do 2º Alvo:", self.sufixo_alvo2, 4, 30, "(Ex: Alvo Principal)")
+        self.criar_label_entry(frame_alvos, "Nome 2º Alvo (Opcional):", self.nome_alvo2, 3, 30, "(Digite apenas parte do nome)", tooltip_text=dica_alvo2)
+        self.criar_label_entry(frame_alvos, "Adicionar à frente do 2º Alvo: (Opcional)", self.sufixo_alvo2, 4, 30, "(Ex: Alvo Secundário)")
 
         frame_dir = tk.LabelFrame(self.scrollable_frame, text=" Diretórios de Processamento ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
         frame_dir.pack(fill="x", pady=(0, 10))
@@ -987,7 +1153,7 @@ class AppWhatsAppForensic:
                                      activebackground="#0b665c", activeforeground="white", font=("Segoe UI", 11, "bold"), 
                                      relief="flat", command=self.iniciar_thread, height=2, cursor="hand2")
         self.btn_iniciar.pack(fill="x")
-
+        
         tk.Label(self.scrollable_frame, text="Desenvolvido por Gabriel Henrique Bueno", 
                  bg="#f4f6f9", fg="#a0aab2", font=("Segoe UI", 8, "italic")).pack(pady=(15, 5))
 
@@ -997,8 +1163,19 @@ class AppWhatsAppForensic:
         style.configure('TProgressbar', thickness=15, troughcolor="#e1e9eb", background="#128C7E")
         style.configure('TCombobox', font=('Segoe UI', 9))
 
-    def criar_label_entry(self, parent, text, var, row, width, hint=""):
-        tk.Label(parent, text=text, bg="white", fg="#333333", font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", pady=3)
+    def criar_label_entry(self, parent, text, var, row, width, hint="", tooltip_text=""):
+        # Cria um sub-frame para agrupar o texto principal e o ícone de interrogação
+        frame_lbl = tk.Frame(parent, bg="white")
+        frame_lbl.grid(row=row, column=0, sticky="w", pady=3)
+        
+        tk.Label(frame_lbl, text=text, bg="white", fg="#333333", font=("Segoe UI", 9)).pack(side="left")
+        
+        # Se um texto de ajuda for passado, cria o ícone [?]
+        if tooltip_text:
+            lbl_help = tk.Label(frame_lbl, text="[?]", bg="white", fg="#128C7E", font=("Segoe UI", 9, "bold"), cursor="question_arrow")
+            lbl_help.pack(side="left", padx=(5, 0))
+            ToolTip(lbl_help, tooltip_text) # Atrela a caixinha flutuante ao ícone
+            
         entry = tk.Entry(parent, textvariable=var, width=width, font=("Segoe UI", 10), relief="solid", bd=1)
         entry.grid(row=row, column=1, padx=12, pady=3, sticky="w")
         
