@@ -5,6 +5,8 @@ import shutil
 import hashlib
 import threading
 import warnings
+import base64
+import ctypes # <--- ADICIONADO PARA ARRUMAR A BARRA DE TAREFAS
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from datetime import datetime
@@ -19,12 +21,20 @@ except ImportError:
     messagebox.showerror("Erro de Dependência", "A biblioteca 'fpdf2' não está instalada. Rode: pip install fpdf2")
     sys.exit()
 
+def obter_caminho_recurso(caminho_relativo):
+    """Retorna o caminho absoluto para o recurso, compatível com o PyInstaller."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, caminho_relativo)
+    return os.path.join(os.path.abspath("."), caminho_relativo)
+
 def configurar_caminho_ffmpeg():
+    # VOLTANDO PARA A LÓGICA ORIGINAL QUE FUNCIONAVA
     if getattr(sys, 'frozen', False):
         caminho_base = sys._MEIPASS
     else:
         caminho_base = os.path.dirname(os.path.abspath(__file__))
     os.environ["PATH"] += os.pathsep + caminho_base
+    
 
 configurar_caminho_ffmpeg()
 
@@ -60,12 +70,24 @@ class InterceptadorDownload:
 # --- CLASSES DO GERADOR DE PDF PERICIAL ---
 class RelatorioForensePDF(FPDF):
     def header(self):
-        self.set_font('helvetica', 'B', 14)
-        self.cell(0, 10, 'RELATÓRIO TÉCNICO DE INDEXAÇÃO E INTEGRIDADE DE DADOS', 0, 1, 'C')
+        if hasattr(self, 'logo_path') and self.logo_path and os.path.exists(self.logo_path):
+            try:
+                self.image(self.logo_path, 10, 8, h=24) 
+            except Exception:
+                pass
+                
+        self.set_y(13) 
+        self.set_x(35) 
+        
+        self.set_font('helvetica', 'B', 13) 
+        self.cell(0, 8, 'RELATÓRIO TÉCNICO DE INDEXAÇÃO E INTEGRIDADE DE DADOS', 0, 1, 'C')
+        
+        self.set_x(35)
         self.set_font('helvetica', 'I', 10)
         self.cell(0, 5, 'Extração Lógica - WhatsApp', 0, 1, 'C')
-        self.line(10, 28, 200, 28)
-        self.ln(10)
+        
+        self.line(10, 34, 200, 34)
+        self.set_y(40) 
 
     def footer(self):
         self.set_y(-15)
@@ -101,13 +123,36 @@ def encontrar_arquivo(nome_procurado, pasta_raiz):
                 
     return None, nome_limpo
 
-def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro_hashes, data_hora_atual, modelo_ia, nome_html):
+def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_aparelho, registro_hashes, data_hora_atual, modelo_ia, nome_html, nomes_extras):
     pdf = RelatorioForensePDF()
+    pdf.logo_path = nomes_extras.get("logo", "") 
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
+    tem_dados_aparelho = any(v for k, v in dados_aparelho.items() if v)
+    item_num = 1
+    
+    if tem_dados_aparelho:
+        pdf.set_font('helvetica', 'B', 12)
+        pdf.cell(0, 10, f'{item_num}. IDENTIFICAÇÃO DO DISPOSITIVO E TITULAR', 0, 1)
+        pdf.set_font('helvetica', '', 10)
+        
+        if dados_aparelho.get('titular_nome'): pdf.cell(0, 6, f"Titular/Proprietário: {dados_aparelho['titular_nome']}", 0, 1)
+        if dados_aparelho.get('titular_cpf'): pdf.cell(0, 6, f"CPF: {dados_aparelho['titular_cpf']}", 0, 1)
+        if dados_aparelho.get('titular_rg'): pdf.cell(0, 6, f"RG: {dados_aparelho['titular_rg']}", 0, 1)
+        
+        marca_modelo = f"{dados_aparelho.get('aparelho_marca', '')} {dados_aparelho.get('aparelho_modelo', '')}".strip()
+        if marca_modelo: pdf.cell(0, 6, f"Aparelho: {marca_modelo}", 0, 1)
+        
+        if dados_aparelho.get('aparelho_imei'): pdf.cell(0, 6, f"IMEI: {dados_aparelho['aparelho_imei']}", 0, 1)
+        if dados_aparelho.get('aparelho_serial'): pdf.cell(0, 6, f"Nº de Série: {dados_aparelho['aparelho_serial']}", 0, 1)
+        if dados_aparelho.get('aparelho_linha'): pdf.cell(0, 6, f"Linha Telefônica: {dados_aparelho['aparelho_linha']}", 0, 1)
+        
+        pdf.ln(5)
+        item_num += 1
+    
     pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 10, '1. METODOLOGIA E ESCOPO DO PROCEDIMENTO', 0, 1)
+    pdf.cell(0, 10, f'{item_num}. METODOLOGIA E ESCOPO DO PROCEDIMENTO', 0, 1)
     
     pdf.set_font('helvetica', '', 10)
     metodologia_texto = (
@@ -124,45 +169,70 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro
     )
     pdf.multi_cell(0, 5, metodologia_texto)
     pdf.ln(5)
+    item_num += 1
 
     pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 10, '2. INFORMAÇÕES DO PROCESSAMENTO', 0, 1)
+    pdf.cell(0, 10, f'{item_num}. INFORMAÇÕES DO PROCESSAMENTO', 0, 1)
     pdf.set_font('helvetica', '', 10)
     pdf.cell(0, 6, f"Data e Hora do Procedimento: {data_hora_atual}", 0, 1)
     pdf.cell(0, 6, f"Modelo de IA Utilizado (Transcrição): {modelo_ia if modelo_ia else 'Nenhum / Não solicitado'}", 0, 1)
     pdf.cell(0, 6, f"Ficheiro de Leitura Gerado: {nome_html}", 0, 1)
     pdf.ln(5)
+    item_num += 1
 
     pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 10, '3. REGISTRO DE INTEGRIDADE (HASH SHA-256)', 0, 1)
+    pdf.cell(0, 10, f'{item_num}. REGISTRO DE INTEGRIDADE (HASH SHA-256)', 0, 1)
     pdf.set_font('courier', '', 8)
     
     for registro in registro_hashes:
         pdf.multi_cell(0, 4, registro)
+    item_num += 1
     
     if incluir_certidao:
         pdf.ln(15)
         pdf.set_font('helvetica', 'B', 12)
-        pdf.cell(0, 10, '4. CERTIDÃO DE EXTRAÇÃO E INDEXAÇÃO', 0, 1)
+        pdf.cell(0, 10, f'{item_num}. CERTIDÃO DE EXTRAÇÃO E INDEXAÇÃO', 0, 1)
         pdf.set_font('helvetica', '', 10)
         
-        certidao_texto = (
-            f"CERTIFICA-SE, para os devidos fins e sob as penas da lei, que a extração primária dos dados "
-            f"foi realizada mediante autorização prévia, expressa e voluntária do(a) proprietário(a) do dispositivo. "
-            f"Certifica-se ainda que foi procedida a indexação e o processamento dos dados listados no item 3 deste "
-            f"documento, de forma a garantir a sua integridade e espelhamento fiel em relação aos arquivos "
-            f"exportados da origem.\n\n"
-            f"Nada mais havendo a constar, lavra-se o presente relatório que segue devidamente assinado."
-        )
+        if tem_dados_aparelho:
+            certidao_texto = (
+                f"CERTIFICA-SE, para os devidos fins e sob as penas da lei, que foi procedida a indexação, "
+                f"cálculo de integridade e o processamento lógico dos dados extraídos do aparelho celular "
+            )
+            
+            marca_modelo = f"{dados_aparelho.get('aparelho_marca', '')} {dados_aparelho.get('aparelho_modelo', '')}".strip()
+            if marca_modelo: certidao_texto += f"{marca_modelo}, "
+            if dados_aparelho.get('aparelho_serial'): certidao_texto += f"serial {dados_aparelho['aparelho_serial']}, "
+            if dados_aparelho.get('aparelho_imei'): certidao_texto += f"IMEI {dados_aparelho['aparelho_imei']}, "
+            if dados_aparelho.get('aparelho_linha'): certidao_texto += f"vinculado à linha {dados_aparelho['aparelho_linha']}, "
+            if dados_aparelho.get('titular_nome'): certidao_texto += f"de propriedade de {dados_aparelho['titular_nome']}, "
+            if dados_aparelho.get('titular_cpf'): certidao_texto += f"portador(a) do CPF {dados_aparelho['titular_cpf']}, "
+            if dados_aparelho.get('titular_rg'): certidao_texto += f"RG {dados_aparelho['titular_rg']}, "
+            
+            certidao_texto = certidao_texto.rstrip(", ") + ". "
+            certidao_texto += (
+                "Ressalta-se que a extração primária dos dados foi realizada mediante autorização prévia, expressa e "
+                "voluntária do(a) proprietário(a). Certifica-se ainda que o processamento garantiu o espelhamento fiel "
+                "em relação aos arquivos exportados da origem, conforme registros de Hash descritos neste documento.\n\n"
+                "Nada mais havendo a constar, lavra-se o presente relatório que segue devidamente assinado."
+            )
+        else:
+            certidao_texto = (
+                f"CERTIFICA-SE, para os devidos fins e sob as penas da lei, que a extração primária dos dados "
+                f"foi realizada mediante autorização prévia, expressa e voluntária do(a) proprietário(a) do dispositivo. "
+                f"Certifica-se ainda que foi procedida a indexação e o processamento dos dados listados neste "
+                f"documento, de forma a garantir a sua integridade e espelhamento fiel em relação aos arquivos "
+                f"exportados da origem.\n\n"
+                f"Nada mais havendo a constar, lavra-se o presente relatório que segue devidamente assinado."
+            )
+            
         pdf.multi_cell(0, 5, certidao_texto)
         
-        # --- NOVO BLOCO DE ASSINATURA PROTEGIDO CONTRA QUEBRA DE PÁGINA ---
         if pdf.get_y() > 230:
             pdf.add_page()
         else:
             pdf.ln(20) 
             
-        # Adicionando a Data Oficial alinhada à direita
         meses = {
             "01": "janeiro", "02": "fevereiro", "03": "março", "04": "abril",
             "05": "maio", "06": "junho", "07": "julho", "08": "agosto",
@@ -173,20 +243,25 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, registro
         
         pdf.set_font('helvetica', '', 11)
         pdf.cell(0, 5, data_extenso, 0, 1, 'R')
-        pdf.ln(25) # Espaço mais generoso para a assinatura física
+        pdf.ln(25)
         
-        # Desenhando a linha e as credenciais centralizadas
         pdf.line(55, pdf.get_y(), 155, pdf.get_y())
         pdf.ln(2)
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
+        
         pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 5, f"{dados_certidao['cargo']} - MASP/Matrícula: {dados_certidao['masp']}", 0, 1, 'C')
+        detalhes_cargo = []
+        if dados_certidao['cargo']: detalhes_cargo.append(dados_certidao['cargo'])
+        if dados_certidao['masp']: detalhes_cargo.append(f"MASP/Matrícula: {dados_certidao['masp']}")
+        if detalhes_cargo:
+            pdf.cell(0, 5, " - ".join(detalhes_cargo), 0, 1, 'C')
         
     pdf.output(caminho_saida)
 
 def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certidao, data_hora_atual, incluir_certidao):
     pdf = RelatorioForensePDF()
+    pdf.logo_path = nomes_extras.get("logo", "")
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
@@ -209,7 +284,6 @@ def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certida
         pdf.cell(0, 8, f"{i}. {rem}", 0, 1)
         
     if incluir_certidao:
-        # --- NOVO BLOCO DE ASSINATURA PROTEGIDO ---
         if pdf.get_y() > 230:
             pdf.add_page()
         else:
@@ -231,12 +305,17 @@ def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certida
         pdf.ln(2)
         pdf.set_font('helvetica', 'B', 10)
         pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
+        
         pdf.set_font('helvetica', '', 10)
-        pdf.cell(0, 5, f"{dados_certidao['cargo']} - MASP/Matrícula: {dados_certidao['masp']}", 0, 1, 'C')
+        detalhes_cargo = []
+        if dados_certidao['cargo']: detalhes_cargo.append(dados_certidao['cargo'])
+        if dados_certidao['masp']: detalhes_cargo.append(f"MASP/Matrícula: {dados_certidao['masp']}")
+        if detalhes_cargo:
+            pdf.cell(0, 5, " - ".join(detalhes_cargo), 0, 1, 'C')
         
     pdf.output(caminho_saida)
 
-def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcrever_video, nome_modelo, incluir_certidao, dados_certidao, nomes_extras, callback_progresso):
+def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcrever_video, nome_modelo, incluir_certidao, dados_certidao, dados_aparelho, nomes_extras, callback_progresso):
     arquivo_txt = None
     for root, dirs, files in os.walk(pasta_entrada):
         for arquivo in files:
@@ -468,14 +547,12 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     nome_arquivo_pdf = f"{nomes_extras['relatorio']}_Relatorio_Análise.pdf"
     nome_arquivo_pdf_integrantes = f"{nomes_extras['relatorio']}_Relacao_Integrantes.pdf"
 
-    # 1. Geração do HTML
     caminho_html = os.path.join(pasta_saida, nome_arquivo_html)
     gerar_html(mensagens, caminho_html, mapa_nomes_reais, nomes_extras, remetentes_validos)
     
     hash_html = calcular_hash_sha256(caminho_html)
     registro_hashes.append(f"\n[ARQUIVO RECONSTRUÍDO - HTML] {nome_arquivo_html}\nSHA256: {hash_html}\n")
 
-    # 2. Geração do PDF de Integrantes (NOVO)
     caminho_pdf_integrantes = os.path.join(pasta_saida, nome_arquivo_pdf_integrantes)
     gerar_pdf_integrantes(
         caminho_pdf_integrantes, 
@@ -488,19 +565,19 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     hash_pdf_integrantes = calcular_hash_sha256(caminho_pdf_integrantes)
     registro_hashes.append(f"\n[ANEXO - RELAÇÃO DE INTEGRANTES] {nome_arquivo_pdf_integrantes}\nSHA256: {hash_pdf_integrantes}\n")
 
-    # 3. Geração do PDF Principal de Análise
     caminho_pdf = os.path.join(pasta_saida, nome_arquivo_pdf)
     gerar_pdf_pericial(
         caminho_pdf, 
         incluir_certidao,
         dados_certidao, 
+        dados_aparelho,
         registro_hashes, 
         data_hora_atual, 
         nome_modelo if usar_transcricao else None,
-        nome_arquivo_html
+        nome_arquivo_html,
+        nomes_extras
     )
 
-    # --- GERAÇÃO DO ARQUIVO TXT COM HASHES GERAIS ---
     hash_pdf = calcular_hash_sha256(caminho_pdf)
     nome_txt_hashes = f"{nomes_extras['relatorio']}_Hashes_Gerais.txt"
     caminho_txt_hashes = os.path.join(pasta_saida, nome_txt_hashes)
@@ -532,13 +609,13 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
         f.write(conteudo_hashes)
 
 def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remetentes_validos):
-    titular_oficial = ""
-    alvo2_oficial = ""
+    lista_alvos = nomes_extras.get("alvos", [])
     
-    if nomes_extras["titular_nome"]:
-        nome_titular_limpo = nomes_extras["titular_nome"].strip().lower()
+    titular_oficial = ""
+    if lista_alvos:
+        nome_primeiro_alvo = lista_alvos[0]['nome'].strip().lower()
         for rem in remetentes_validos:
-            if nome_titular_limpo in rem.lower():
+            if nome_primeiro_alvo in rem.lower():
                 titular_oficial = rem
                 break
                 
@@ -552,13 +629,6 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
         for msg in lista_mensagens:
             if msg.get("tipo") != "sistema" and msg.get("remetente"):
                 titular_oficial = msg["remetente"]
-                break
-                
-    if nomes_extras["alvo2_nome"]:
-        nome_alvo2_limpo = nomes_extras["alvo2_nome"].strip().lower()
-        for rem in remetentes_validos:
-            if nome_alvo2_limpo in rem.lower():
-                alvo2_oficial = rem
                 break
 
     cores_disponiveis = [
@@ -574,6 +644,18 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             i_cor += 1
 
     nome_pdf_integrantes = f"{nomes_extras['relatorio']}_Relacao_Integrantes.pdf"
+    
+    caminho_logo = nomes_extras.get("logo", "")
+    html_logo_tag = ""
+    if caminho_logo and os.path.exists(caminho_logo):
+        try:
+            with open(caminho_logo, "rb") as img_file:
+                b64_string = base64.b64encode(img_file.read()).decode('utf-8')
+                ext = caminho_logo.split('.')[-1].lower()
+                mime = "image/png" if ext == "png" else "image/jpeg"
+                html_logo_tag = f'<img src="data:{mime};base64,{b64_string}" style="height: 50px; margin-right: 20px; object-fit: contain;">'
+        except Exception:
+            pass
 
     html_content = f"""<!DOCTYPE html>
     <html>
@@ -584,7 +666,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             body {{ font-family: 'Segoe UI', -apple-system, Arial, sans-serif; background-color: #111b21; margin: 0; padding: 0; color: #e9edef; }}
             
             .header {{ background-color: #202c33; color: #e9edef; position: sticky; top: 0; z-index: 1001; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; flex-direction: column; border-bottom: 1px solid #2a3942; }}
-            .header-info {{ padding: 15px 25px; }}
+            .header-info {{ padding: 15px 25px; display: flex; align-items: center; }}
             .header-title {{ margin: 0; font-size: 18px; font-weight: 500; color: #e9edef; }}
             .header-subtitle {{ margin: 0; font-size: 12px; color: #8696a0; margin-top: 5px; }}
             
@@ -599,7 +681,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             
             .sidebar {{ 
                 width: 280px; min-width: 280px; background-color: #111b21; border-right: 1px solid #2a3942; 
-                padding: 15px; height: calc(100vh - 75px); overflow-y: auto; position: sticky; top: 75px; 
+                padding: 15px; height: calc(100vh - 130px); overflow-y: auto; position: sticky; top: 130px; 
                 box-sizing: border-box; 
             }}
             
@@ -607,7 +689,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
                 background-color: #00a884; color: #111b21; padding: 12px; border-radius: 8px; border: none; width: 100%;
                 cursor: pointer; font-weight: bold; font-size: 13px; margin-bottom: 20px; text-transform: uppercase;
                 transition: background 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                display: block; text-align: center; text-decoration: none; box-sizing: border-box; /* Adicionado para suportar tag <a> */
+                display: block; text-align: center; text-decoration: none; box-sizing: border-box;
             }}
             .btn-export-list:hover {{ background-color: #00c298; }}
             
@@ -623,7 +705,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             .chat-area {{ flex-grow: 1; padding: 20px; max-width: 950px; margin: 0 auto; box-sizing: border-box; }}
             
             .search-bar-container {{ 
-                position: sticky; top: 90px; 
+                position: sticky; top: 145px; 
                 background: #202c33; 
                 padding: 12px 18px; border-radius: 12px; 
                 box-shadow: 0 6px 16px rgba(0,0,0,0.4); 
@@ -726,8 +808,11 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
     <body>
         <div class="header">
             <div class="header-info">
-                <h2 class="header-title">{nomes_extras["relatorio"]} - Leitor Forense</h2>
-                <p class="header-subtitle">Integridade e Cadeia de Custódia Assegurada por Hash Cryptográfico</p>
+                {html_logo_tag}
+                <div>
+                    <h2 class="header-title">{nomes_extras["relatorio"]} - Leitor Forense</h2>
+                    <p class="header-subtitle">Integridade e Cadeia de Custódia Assegurada por Hash Cryptográfico</p>
+                </div>
             </div>
             <div class="tab-buttons">
                 <button id="btn-tab-chat" class="tab-btn active" onclick="openTab('chat')">💬 Conversação</button>
@@ -791,10 +876,11 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             cor_rem = mapa_cores.get(msg["remetente"], "#53bdeb")
             
             nome_exibicao = msg["remetente"]
-            if msg["remetente"] == titular_oficial and nomes_extras["titular_sufixo"]:
-                nome_exibicao = f"{msg['remetente']} ({nomes_extras['titular_sufixo']})"
-            elif alvo2_oficial and msg["remetente"] == alvo2_oficial and nomes_extras["alvo2_sufixo"]:
-                nome_exibicao = f"{msg['remetente']} ({nomes_extras['alvo2_sufixo']})"
+            
+            for alvo in lista_alvos:
+                if alvo['nome'].lower() in msg["remetente"].lower() and alvo['sufixo'].strip():
+                    nome_exibicao = f"{msg['remetente']} ({alvo['sufixo'].strip()})"
+                    break
 
             chat_html += f'<div class="msg-wrapper {classe_lado}" data-remetente="{rem_attr}"><div class="mensagem" id="msg-{lista_mensagens.index(msg)}">'
             
@@ -858,7 +944,6 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
                 document.getElementById('tab-' + tabName).classList.add('active');
                 document.getElementById('btn-tab-' + tabName).classList.add('active');
             }
-
 
             let matches = [];
             let currentIndex = -1;
@@ -1008,12 +1093,11 @@ class ToolTip:
         x += self.widget.winfo_rootx() + 25
         y += self.widget.winfo_rooty() + 20
         self.tooltip_window = tw = tk.Toplevel(self.widget)
-        tw.wm_overrideredirect(True) # Remove as bordas da janela
+        tw.wm_overrideredirect(True) 
         tw.wm_geometry(f"+{x}+{y}")
         
-        # Estilo da caixinha de ajuda
         label = tk.Label(tw, text=self.text, justify='left',
-                         background="#202c33", foreground="#e9edef", # Cores escuras para combinar com o seu tema
+                         background="#202c33", foreground="#e9edef", 
                          relief='solid', borderwidth=1,
                          font=("Segoe UI", 9, "normal"), padx=8, pady=4)
         label.pack(ipadx=1)
@@ -1029,169 +1113,336 @@ class AppWhatsAppForensic:
         self.root = root
         self.root.title("WhatsApp Constructor - Indexação Forense")
         self.root.geometry("680x880") 
-        self.root.configure(bg="#f4f6f9")
+        self.root.configure(bg="#111b21") 
+
+        # --- NOVO: CÓDIGO PARA CARREGAR O ÍCONE DA JANELA ---
+        caminho_icone = obter_caminho_recurso("icone.ico")
+        if os.path.exists(caminho_icone):
+            self.root.iconbitmap(caminho_icone)
+        # ----------------------------------------------------
 
         self.pasta_entrada = tk.StringVar()
         self.pasta_saida = tk.StringVar()
         self.usar_transcricao_audio = tk.BooleanVar(value=False)
         self.usar_transcricao_video = tk.BooleanVar(value=False)
         self.modelo_selecionado = tk.StringVar(value="turbo")
-        self.incluir_certidao = tk.BooleanVar(value=True) 
         self.nome_relatorio = tk.StringVar(value="Evidencia_WhatsApp_01")
-        self.nome_titular = tk.StringVar()
-        self.sufixo_titular = tk.StringVar()
-        self.nome_alvo2 = tk.StringVar()
-        self.sufixo_alvo2 = tk.StringVar()
+        
         self.nome_relator = tk.StringVar()
         self.cargo_relator = tk.StringVar()
         self.masp_relator = tk.StringVar()
+        
+        self.nome_logo_selecionada = tk.StringVar(value="Nenhuma (Sem Logo)")
+        self.caminho_logo = tk.StringVar()
+        self.mapa_logos_internas = {} 
+        
+        self.titular_nome = tk.StringVar()
+        self.titular_cpf = tk.StringVar()
+        self.titular_rg = tk.StringVar()
+        
+        self.aparelho_marca = tk.StringVar()
+        self.aparelho_modelo = tk.StringVar()
+        self.aparelho_serial = tk.StringVar()
+        self.aparelho_imei = tk.StringVar()
+        self.aparelho_linha = tk.StringVar()
+        
+        self.alvos_vars = []
 
         self.estilizar_interface()
 
-        self.main_container = tk.Frame(root, bg="#f4f6f9")
+        self.main_container = tk.Frame(root, bg="#111b21")
         self.main_container.pack(fill="both", expand=True)
+        
+        self.aba_atual = None
+        self.abas_frames = {}
+        self.botoes_aba = {}
+        self.indicadores_aba = {}
+        
+        self.tab_bar = tk.Frame(self.main_container, bg="#111b21")
+        self.tab_bar.pack(fill="x", padx=10, pady=(15, 0))
+        
+        linha_sep = tk.Frame(self.main_container, bg="#2a3942", height=2)
+        linha_sep.pack(fill="x", padx=10)
+        
+        self.content_area = tk.Frame(self.main_container, bg="#111b21")
+        self.content_area.pack(fill="both", expand=True, padx=10, pady=(10, 10))
 
-        self.canvas = tk.Canvas(self.main_container, bg="#f4f6f9", highlightthickness=0)
-        self.canvas.pack(side="left", fill="both", expand=True)
+        self.criar_aba("proc", "⚙️ Processamento")
+        self.criar_aba("dados", "📄 Dados & Certidão")
+        self.criar_aba("alvos", "🎯 Alvos HTML")
 
-        self.scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.canvas.yview)
-        self.scrollbar.pack(side="right", fill="y")
+        self.construir_aba_processamento()
+        self.construir_aba_dados()
+        self.construir_aba_alvos()
+        
+        self.alternar_aba("proc")
 
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+    def estilizar_interface(self):
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('TProgressbar', thickness=15, troughcolor="#202c33", background="#00a884", bordercolor="#111b21")
+        style.configure('TCombobox', font=('Segoe UI', 10), fieldbackground="#2a3942", background="#202c33", foreground="#e9edef", bordercolor="#2a3942")
+        style.map('TCombobox', fieldbackground=[('readonly', '#2a3942')], foreground=[('readonly', '#e9edef')])
 
-        self.scrollable_frame = tk.Frame(self.canvas, bg="#f4f6f9", padx=20, pady=15)
-        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+    # ================= SISTEMA DE NAVEGAÇÃO CUSTOMIZADO =================
+    
+    def criar_aba(self, id_aba, texto):
+        btn_frame = tk.Frame(self.tab_bar, bg="#111b21")
+        btn_frame.pack(side="left", padx=(0, 5))
 
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        self.canvas.bind(
-            "<Configure>",
-            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
-        )
+        btn = tk.Label(btn_frame, text=texto, font=("Segoe UI", 10, "bold"), 
+                       bg="#111b21", fg="#8696a0", padx=15, pady=8, cursor="hand2")
+        btn.pack(side="top")
+        
+        indicador = tk.Frame(btn_frame, bg="#111b21", height=3)
+        indicador.pack(side="bottom", fill="x")
+
+        content = tk.Frame(self.content_area, bg="#111b21")
+        
+        self.abas_frames[id_aba] = content
+        self.botoes_aba[id_aba] = btn
+        self.indicadores_aba[id_aba] = indicador
+
+        btn.bind("<Button-1>", lambda e: self.alternar_aba(id_aba))
+        btn.bind("<Enter>", lambda e, id=id_aba: self.hover_aba(id, True))
+        btn.bind("<Leave>", lambda e, id=id_aba: self.hover_aba(id, False))
+
+    def alternar_aba(self, id_aba_ativa):
+        self.aba_atual = id_aba_ativa
+        for id_aba, frame in self.abas_frames.items():
+            if id_aba == id_aba_ativa:
+                frame.pack(fill="both", expand=True)
+                self.botoes_aba[id_aba].config(fg="#00a884", bg="#202c33")
+                self.indicadores_aba[id_aba].config(bg="#00a884")
+                self.botoes_aba[id_aba].master.config(bg="#202c33")
+            else:
+                frame.pack_forget()
+                self.botoes_aba[id_aba].config(fg="#8696a0", bg="#111b21")
+                self.indicadores_aba[id_aba].config(bg="#111b21")
+                self.botoes_aba[id_aba].master.config(bg="#111b21")
+
+    def hover_aba(self, id_aba, is_hover):
+        if id_aba == self.aba_atual: return
+        if is_hover:
+            self.botoes_aba[id_aba].config(bg="#202c33")
+            self.botoes_aba[id_aba].master.config(bg="#202c33")
+        else:
+            self.botoes_aba[id_aba].config(bg="#111b21")
+            self.botoes_aba[id_aba].master.config(bg="#111b21")
+
+    # ================= CONSTRUÇÃO DOS CONTEÚDOS DAS ABAS =================
+    
+    def criar_scrollable_frame(self, parent_tab):
+        canvas = tk.Canvas(parent_tab, bg="#111b21", highlightthickness=0)
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(parent_tab, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollable_frame = tk.Frame(canvas, bg="#111b21", padx=15, pady=10)
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_window, width=e.width))
 
         def _on_mousewheel(event):
             if event.delta:
-                self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.root.bind_all("<MouseWheel>", _on_mousewheel)
+                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+                
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        return scrollable_frame
 
-        frame_ident = tk.LabelFrame(self.scrollable_frame, text=" Dados do Relatório & Certidão ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
-        frame_ident.pack(fill="x", pady=(0, 10))
-
-        chk_cert = tk.Checkbutton(frame_ident, text="Incluir Certidão Análise e Assinatura no PDF", 
-                                  variable=self.incluir_certidao, command=self.toggle_certidao, 
-                                  bg="white", activebackground="white", fg="#111b21", font=("Segoe UI", 9, "bold"))
-        chk_cert.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-
-        self.criar_label_entry(frame_ident, "Nome da Exportação (Obrigatório):", self.nome_relatorio, 1, 35)
-        self.criar_label_entry(frame_ident, "Nome do Policial/Relator:", self.nome_relator, 2, 45)
-        self.criar_label_entry(frame_ident, "Cargo / Função:", self.cargo_relator, 3, 45)
-        self.criar_label_entry(frame_ident, "MASP / Matrícula:", self.masp_relator, 4, 25)
-
-        frame_alvos = tk.LabelFrame(self.scrollable_frame, text=" Identificação de Alvos no HTML  ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
-        frame_alvos.pack(fill="x", pady=(0, 10))
+    def construir_aba_processamento(self):
+        frame = self.criar_scrollable_frame(self.abas_frames["proc"])
         
-        # Textos explicativos para as Tooltips
-        dica_titular = "O Titular é o dono do aparelho periciado.\nAs mensagens dele aparecerão alinhadas à direita\n(cor verde), simulando a tela real do aplicativo."
-        dica_sufixo_titular = "Um texto opcional que aparecerá ao lado do nome do titular\nno relatório. Ex: João (Alvo Principal) ou João (551199999999)"
-        dica_alvo2 = "Identifica automaticamente um alvo específico\nna lista de contatos, destacando o nome dele nas conversas."
-        
-        self.criar_label_entry(frame_alvos, "Titular (Fica na Direita):", self.nome_titular, 0, 30, tooltip_text=dica_titular)
-        self.criar_label_entry(frame_alvos, "Adicionar à frente do Titular: (Opcional)", self.sufixo_titular, 1, 30, "(Ex: Número de Telefone)", tooltip_text=dica_sufixo_titular)
-        
-        ttk.Separator(frame_alvos, orient='horizontal').grid(row=2, column=0, columnspan=3, sticky='ew', pady=8)
-        
-        self.criar_label_entry(frame_alvos, "Nome 2º Alvo (Opcional):", self.nome_alvo2, 3, 30, "(Digite apenas parte do nome)", tooltip_text=dica_alvo2)
-        self.criar_label_entry(frame_alvos, "Adicionar à frente do 2º Alvo: (Opcional)", self.sufixo_alvo2, 4, 30, "(Ex: Alvo Secundário)")
+        frame_dir = tk.LabelFrame(frame, text=" Diretórios de Processamento ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_dir.pack(fill="x", pady=(0, 15))
 
-        frame_dir = tk.LabelFrame(self.scrollable_frame, text=" Diretórios de Processamento ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
-        frame_dir.pack(fill="x", pady=(0, 10))
-
-        tk.Label(frame_dir, text="Origem (Pasta com txt):", bg="white", fg="#333333", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
-        entry_ent = tk.Entry(frame_dir, textvariable=self.pasta_entrada, state="readonly", width=48, font=("Segoe UI", 10), bg="#f8f9fa", relief="flat", bd=2)
+        tk.Label(frame_dir, text="Origem (Pasta com txt):", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w")
+        entry_ent = tk.Entry(frame_dir, textvariable=self.pasta_entrada, state="readonly", width=48, font=("Segoe UI", 10), bg="#2a3942", fg="#e9edef", readonlybackground="#2a3942", relief="flat", highlightthickness=1, highlightbackground="#3a4b55")
         entry_ent.grid(row=1, column=0, pady=(2, 6), sticky="w")
-        tk.Button(frame_dir, text="Procurar...", command=self.selecionar_entrada, bg="#e1e9eb", fg="#075e54", activebackground="#d2dfdf", font=("Segoe UI", 9, "bold"), relief="flat", cursor="hand2").grid(row=1, column=1, padx=(10, 0), pady=(2, 6))
+        tk.Button(frame_dir, text="Procurar...", command=self.selecionar_entrada, bg="#2a3942", fg="#00a884", activebackground="#3a4b55", activeforeground="#00c298", font=("Segoe UI", 9, "bold"), relief="flat", cursor="hand2").grid(row=1, column=1, padx=(10, 0), pady=(2, 6))
 
-        tk.Label(frame_dir, text="Destino (Onde os relatórios serão gravados):", bg="white", fg="#333333", font=("Segoe UI", 9, "bold")).grid(row=2, column=0, sticky="w")
-        entry_sai = tk.Entry(frame_dir, textvariable=self.pasta_saida, state="readonly", width=48, font=("Segoe UI", 10), bg="#f8f9fa", relief="flat", bd=2)
+        tk.Label(frame_dir, text="Destino (Onde os relatórios serão gravados):", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9, "bold")).grid(row=2, column=0, sticky="w")
+        entry_sai = tk.Entry(frame_dir, textvariable=self.pasta_saida, state="readonly", width=48, font=("Segoe UI", 10), bg="#2a3942", fg="#e9edef", readonlybackground="#2a3942", relief="flat", highlightthickness=1, highlightbackground="#3a4b55")
         entry_sai.grid(row=3, column=0, pady=(2, 2), sticky="w")
-        tk.Button(frame_dir, text="Procurar...", command=self.selecionar_saida, bg="#e1e9eb", fg="#075e54", activebackground="#d2dfdf", font=("Segoe UI", 9, "bold"), relief="flat", cursor="hand2").grid(row=3, column=1, padx=(10, 0), pady=(2, 2))
+        tk.Button(frame_dir, text="Procurar...", command=self.selecionar_saida, bg="#2a3942", fg="#00a884", activebackground="#3a4b55", activeforeground="#00c298", font=("Segoe UI", 9, "bold"), relief="flat", cursor="hand2").grid(row=3, column=1, padx=(10, 0), pady=(2, 2))
 
-        frame_transcricao = tk.LabelFrame(self.scrollable_frame, text=" Transcrição de Mídia (Whisper Offline) ", padx=15, pady=10, bg="white", fg="#075e54", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
-        frame_transcricao.pack(fill="x", pady=(0, 10))
+        frame_transcricao = tk.LabelFrame(frame, text=" Transcrição de Mídia (Whisper Offline) ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_transcricao.pack(fill="x", pady=(0, 15))
         
         chk_transcricao_audio = tk.Checkbutton(frame_transcricao, text="Transcrever Áudios Localmente", 
                                          variable=self.usar_transcricao_audio, command=self.toggle_opcoes_ia,
-                                         bg="white", activebackground="white", fg="#111b21", font=("Segoe UI", 10))
+                                         bg="#202c33", activebackground="#202c33", activeforeground="#e9edef", fg="#e9edef", selectcolor="#111b21", font=("Segoe UI", 10))
         chk_transcricao_audio.pack(anchor="w", pady=(0, 2))
 
         chk_transcricao_video = tk.Checkbutton(frame_transcricao, text="Transcrever Vídeos (Pode ser muito demorado)", 
                                          variable=self.usar_transcricao_video, command=self.toggle_opcoes_ia,
-                                         bg="white", activebackground="white", fg="#111b21", font=("Segoe UI", 10))
+                                         bg="#202c33", activebackground="#202c33", activeforeground="#e9edef", fg="#e9edef", selectcolor="#111b21", font=("Segoe UI", 10))
         chk_transcricao_video.pack(anchor="w", pady=(0, 5))
         
         if not WHISPER_DISPONIVEL:
             chk_transcricao_audio.config(state="disabled")
             chk_transcricao_video.config(state="disabled")
-            tk.Label(frame_transcricao, text="Aviso: Whisper não instalado.", fg="#dc3545", bg="white", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+            tk.Label(frame_transcricao, text="Aviso: Whisper não instalado.", fg="#ff7a7a", bg="#202c33", font=("Segoe UI", 9, "bold")).pack(anchor="w")
 
-        frame_modelos = tk.Frame(frame_transcricao, bg="white")
+        frame_modelos = tk.Frame(frame_transcricao, bg="#202c33")
         frame_modelos.pack(fill="x", pady=(5, 0))
-        tk.Label(frame_modelos, text="Modelo da IA Whisper:", bg="white", fg="#333333", font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(frame_modelos, text="Modelo da IA Whisper:", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9)).pack(side="left")
         
         self.combo_modelos = ttk.Combobox(frame_modelos, values=["medium", "turbo"], textvariable=self.modelo_selecionado, state="disabled", width=12)
         self.combo_modelos.pack(side="left", padx=(10, 0))
-
-        self.label_status = tk.Label(self.scrollable_frame, text="Pronto para iniciar.", fg="#5c6f78", bg="#f4f6f9", font=("Segoe UI", 10, "italic"))
-        self.label_status.pack(anchor="w", pady=(2, 0))
         
-        self.barra_progresso = ttk.Progressbar(self.scrollable_frame, orient="horizontal", mode="determinate")
+        frame_nome = tk.Frame(frame, bg="#111b21")
+        frame_nome.pack(fill="x", pady=(15, 0))
+        self.criar_label_entry(frame_nome, "Nome da Exportação (Obrigatório):", self.nome_relatorio, 0, 45, bg_parent="#111b21")
+        
+        self.label_status = tk.Label(frame, text="Pronto para iniciar.", fg="#8696a0", bg="#111b21", font=("Segoe UI", 10, "italic"))
+        self.label_status.pack(anchor="w", pady=(15, 0))
+        
+        self.barra_progresso = ttk.Progressbar(frame, orient="horizontal", mode="determinate")
         self.barra_progresso.pack(fill="x", pady=(5, 15))
 
-        self.btn_iniciar = tk.Button(self.scrollable_frame, text="Iniciar Processamento Forense", bg="#128C7E", fg="white", 
-                                     activebackground="#0b665c", activeforeground="white", font=("Segoe UI", 11, "bold"), 
+        self.btn_iniciar = tk.Button(frame, text="Iniciar Processamento Forense", bg="#00a884", fg="#111b21", 
+                                     activebackground="#00c298", activeforeground="#111b21", font=("Segoe UI", 11, "bold"), 
                                      relief="flat", command=self.iniciar_thread, height=2, cursor="hand2")
         self.btn_iniciar.pack(fill="x")
         
-        tk.Label(self.scrollable_frame, text="Desenvolvido por Gabriel Henrique Bueno", 
-                 bg="#f4f6f9", fg="#a0aab2", font=("Segoe UI", 8, "italic")).pack(pady=(15, 5))
+        tk.Label(frame, text="Desenvolvido por Gabriel Henrique Bueno", bg="#111b21", fg="#8696a0", font=("Segoe UI", 8, "italic")).pack(pady=(15, 5))
 
-    def estilizar_interface(self):
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TProgressbar', thickness=15, troughcolor="#e1e9eb", background="#128C7E")
-        style.configure('TCombobox', font=('Segoe UI', 9))
+    def construir_aba_dados(self):
+        frame = self.criar_scrollable_frame(self.abas_frames["dados"])
+        
+        # --- BLOCO DE LOGOMARCA DINÂMICA ---
+        frame_logo = tk.LabelFrame(frame, text=" Personalização Visual (Logo) ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_logo.pack(fill="x", pady=(0, 15))
+        
+        pasta_logos = obter_caminho_recurso("logos")
+        opcoes_logo = ["Nenhuma (Sem Logo)"]
+        if os.path.exists(pasta_logos):
+            for arq in sorted(os.listdir(pasta_logos)):
+                if arq.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    nome_amigavel = os.path.splitext(arq)[0].replace("_", " ").upper()
+                    opcoes_logo.append(nome_amigavel)
+                    self.mapa_logos_internas[nome_amigavel] = os.path.join(pasta_logos, arq)
+                    
+        opcoes_logo.append("Personalizada (Buscar no PC)...")
 
-    def criar_label_entry(self, parent, text, var, row, width, hint="", tooltip_text=""):
-        # Cria um sub-frame para agrupar o texto principal e o ícone de interrogação
-        frame_lbl = tk.Frame(parent, bg="white")
-        frame_lbl.grid(row=row, column=0, sticky="w", pady=3)
+        tk.Label(frame_logo, text="Selecione o Brasão/Logomarca:", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 5))
         
-        tk.Label(frame_lbl, text=text, bg="white", fg="#333333", font=("Segoe UI", 9)).pack(side="left")
+        combo_logo = ttk.Combobox(frame_logo, values=opcoes_logo, textvariable=self.nome_logo_selecionada, state="readonly", width=38, font=("Segoe UI", 10))
+        combo_logo.grid(row=1, column=0, pady=(0, 6), sticky="w")
+        combo_logo.bind("<<ComboboxSelected>>", self.on_logo_selecionada)
         
-        # Se um texto de ajuda for passado, cria o ícone [?]
-        if tooltip_text:
-            lbl_help = tk.Label(frame_lbl, text="[?]", bg="white", fg="#128C7E", font=("Segoe UI", 9, "bold"), cursor="question_arrow")
-            lbl_help.pack(side="left", padx=(5, 0))
-            ToolTip(lbl_help, tooltip_text) # Atrela a caixinha flutuante ao ícone
+        self.lbl_caminho_custom = tk.Label(frame_logo, text="", bg="#202c33", fg="#8696a0", font=("Segoe UI", 8, "italic"))
+        self.lbl_caminho_custom.grid(row=2, column=0, columnspan=2, sticky="w")
+        
+        frame_relator = tk.LabelFrame(frame, text=" Responsável pela Extração/Relatório ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_relator.pack(fill="x", pady=(0, 15))
+        
+        self.criar_label_entry(frame_relator, "Nome do Policial/Relator:", self.nome_relator, 0, 40)
+        self.criar_label_entry(frame_relator, "Cargo / Função:", self.cargo_relator, 1, 40)
+        self.criar_label_entry(frame_relator, "MASP / Matrícula:", self.masp_relator, 2, 25)
+        
+        dica_titular = "Esses dados irão enriquecer o preâmbulo do PDF\ne preencher dinamicamente a Certidão Final."
+        frame_titular = tk.LabelFrame(frame, text=" Qualificação do Titular do Aparelho ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_titular.pack(fill="x", pady=(0, 15))
+        
+        self.criar_label_entry(frame_titular, "Nome do Proprietário:", self.titular_nome, 0, 40, tooltip_text=dica_titular)
+        self.criar_label_entry(frame_titular, "CPF:", self.titular_cpf, 1, 25)
+        self.criar_label_entry(frame_titular, "RG:", self.titular_rg, 2, 25)
+        
+        frame_aparelho = tk.LabelFrame(frame, text=" Identificação do Dispositivo ", padx=15, pady=10, bg="#202c33", fg="#00a884", font=("Segoe UI", 10, "bold"), bd=1, relief="solid")
+        frame_aparelho.pack(fill="x", pady=(0, 10))
+        
+        self.criar_label_entry(frame_aparelho, "Marca:", self.aparelho_marca, 0, 25)
+        self.criar_label_entry(frame_aparelho, "Modelo:", self.aparelho_modelo, 1, 40)
+        self.criar_label_entry(frame_aparelho, "Nº Série:", self.aparelho_serial, 2, 25)
+        self.criar_label_entry(frame_aparelho, "IMEI:", self.aparelho_imei, 3, 25)
+        self.criar_label_entry(frame_aparelho, "Linha Associada:", self.aparelho_linha, 4, 25)
+
+    def construir_aba_alvos(self):
+        frame = self.criar_scrollable_frame(self.abas_frames["alvos"])
+        
+        tk.Label(frame, text="Mapeamento de Interlocutores (HTML)", bg="#111b21", fg="#00a884", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(5, 5))
+        dica_alvos = "Adicione aqui os nomes das pessoas (como estão no TXT extraído) para destacá-los no chat.\nO PRIMEIRO alvo adicionado na lista será considerado o Títular do aparelho (ficará à direita em verde)."
+        tk.Label(frame, text=dica_alvos, bg="#111b21", fg="#8696a0", font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 15))
+        
+        self.frame_lista_alvos = tk.Frame(frame, bg="#111b21")
+        self.frame_lista_alvos.pack(fill="x")
+        
+        btn_add_alvo = tk.Button(frame, text="+ Adicionar Novo Alvo", bg="#202c33", fg="#00a884", activebackground="#2a3942", activeforeground="#00c298",
+                                 font=("Segoe UI", 9, "bold"), relief="flat", command=self.adicionar_alvo_ui, cursor="hand2")
+        btn_add_alvo.pack(anchor="w", pady=15)
+        
+        self.adicionar_alvo_ui()
+
+    def adicionar_alvo_ui(self):
+        f_row = tk.Frame(self.frame_lista_alvos, bg="#202c33", bd=1, relief="solid", padx=10, pady=10)
+        f_row.pack(fill="x", pady=5)
+        
+        var_nome = tk.StringVar()
+        var_sufixo = tk.StringVar()
+        
+        tk.Label(f_row, text="Nome na Conversa:", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9)).grid(row=0, column=0, sticky="w")
+        tk.Entry(f_row, textvariable=var_nome, width=25, font=("Segoe UI", 10), bg="#2a3942", fg="#e9edef", insertbackground="#e9edef", relief="flat", highlightthickness=1, highlightbackground="#3a4b55").grid(row=0, column=1, padx=10)
+        
+        tk.Label(f_row, text="Sufixo Opcional:", bg="#202c33", fg="#e9edef", font=("Segoe UI", 9)).grid(row=0, column=2, sticky="w")
+        tk.Entry(f_row, textvariable=var_sufixo, width=22, font=("Segoe UI", 10), bg="#2a3942", fg="#e9edef", insertbackground="#e9edef", relief="flat", highlightthickness=1, highlightbackground="#3a4b55").grid(row=0, column=3, padx=10)
+        
+        btn_remover = tk.Button(f_row, text="Remover", bg="#ff7a7a", fg="#111b21", relief="flat", font=("Segoe UI", 8, "bold"), cursor="hand2",
+                                command=lambda f=f_row, v=(var_nome, var_sufixo): self.remover_alvo_ui(f, v))
+        btn_remover.grid(row=0, column=4, padx=5)
+        
+        self.alvos_vars.append((var_nome, var_sufixo))
+        
+    def remover_alvo_ui(self, frame, vars_tuple):
+        frame.destroy()
+        if vars_tuple in self.alvos_vars:
+            self.alvos_vars.remove(vars_tuple)
+
+    # ================= MÉTODOS AUXILIARES =================
+
+    def criar_label_entry(self, parent, text, var, row, width, hint="", tooltip_text="", bg_parent="#202c33"):
+        frame_lbl = tk.Frame(parent, bg=bg_parent)
+        if hasattr(parent, 'grid_size'): 
+            frame_lbl.grid(row=row, column=0, sticky="w", pady=3)
+        else:
+            frame_lbl.pack(anchor="w", pady=3)
             
-        entry = tk.Entry(parent, textvariable=var, width=width, font=("Segoe UI", 10), relief="solid", bd=1)
-        entry.grid(row=row, column=1, padx=12, pady=3, sticky="w")
+        tk.Label(frame_lbl, text=text, bg=bg_parent, fg="#e9edef", font=("Segoe UI", 9)).pack(side="left")
         
-        if hint:
-            tk.Label(parent, text=hint, bg="white", fg="#7f8c8d", font=("Segoe UI", 8, "italic")).grid(row=row, column=2, sticky="w")
+        if tooltip_text:
+            lbl_help = tk.Label(frame_lbl, text="[?]", bg=bg_parent, fg="#00a884", font=("Segoe UI", 9, "bold"), cursor="question_arrow")
+            lbl_help.pack(side="left", padx=(5, 0))
+            ToolTip(lbl_help, tooltip_text) 
+            
+        entry = tk.Entry(parent, textvariable=var, width=width, font=("Segoe UI", 10), bg="#2a3942", fg="#e9edef", insertbackground="#e9edef", relief="flat", highlightthickness=1, highlightbackground="#3a4b55", highlightcolor="#00a884")
+        if hasattr(parent, 'grid_size'):
+            entry.grid(row=row, column=1, padx=12, pady=3, sticky="w")
+            if hint: tk.Label(parent, text=hint, bg=bg_parent, fg="#8696a0", font=("Segoe UI", 8, "italic")).grid(row=row, column=2, sticky="w")
+        else:
+            entry.pack(anchor="w", padx=15)
 
-        if text.startswith("Nome do Policial"): self.entry_nome = entry
-        elif text.startswith("Cargo"): self.entry_cargo = entry
-        elif text.startswith("MASP"): self.entry_masp = entry
-
-    def toggle_certidao(self):
-        estado = "normal" if self.incluir_certidao.get() else "disabled"
-        bg_color = "white" if self.incluir_certidao.get() else "#f1f3f5"
-        self.entry_nome.config(state=estado, bg=bg_color)
-        self.entry_cargo.config(state=estado, bg=bg_color)
-        self.entry_masp.config(state=estado, bg=bg_color)
+    def on_logo_selecionada(self, event=None):
+        escolha = self.nome_logo_selecionada.get()
+        if escolha == "Nenhuma (Sem Logo)":
+            self.caminho_logo.set("")
+            self.lbl_caminho_custom.config(text="")
+        elif escolha == "Personalizada (Buscar no PC)...":
+            arquivo = filedialog.askopenfilename(title="Selecione a Logomarca", filetypes=[("Imagens", "*.png *.jpg *.jpeg")])
+            if arquivo:
+                self.caminho_logo.set(arquivo)
+                nome_arq = os.path.basename(arquivo)
+                self.lbl_caminho_custom.config(text=f"Arquivo: {nome_arq}")
+            else:
+                self.nome_logo_selecionada.set("Nenhuma (Sem Logo)")
+                self.caminho_logo.set("")
+                self.lbl_caminho_custom.config(text="")
+        else:
+            self.caminho_logo.set(self.mapa_logos_internas.get(escolha, ""))
+            self.lbl_caminho_custom.config(text="")
 
     def toggle_opcoes_ia(self):
         if self.usar_transcricao_audio.get() or self.usar_transcricao_video.get():
@@ -1220,41 +1471,53 @@ class AppWhatsAppForensic:
         saida = self.pasta_saida.get()
 
         if not entrada or not saida:
-            messagebox.showwarning("Atenção", "Selecione as pastas de origem e destino.")
+            messagebox.showwarning("Atenção", "Selecione as pastas de origem e destino na aba de Processamento.")
             return
 
         if not self.nome_relatorio.get():
             messagebox.showwarning("Atenção", "O Nome da Exportação é obrigatório.")
             return
 
-        if self.incluir_certidao.get():
-            if not self.nome_relator.get() or not self.cargo_relator.get() or not self.masp_relator.get():
-                messagebox.showwarning("Atenção", "Preencha os dados do relator ou desmarque a opção de 'Incluir Certidão'.")
-                return
-
         nome_limpo_relatorio = "".join(x for x in self.nome_relatorio.get() if x.isalnum() or x in "._- ")
         nome_limpo_relatorio = nome_limpo_relatorio.replace(" ", "_")
 
-        self.btn_iniciar.config(state="disabled", bg="#95a5a6")
+        self.btn_iniciar.config(state="disabled", bg="#3a4b55")
         
         dados_certidao = {
-            "nome": self.nome_relator.get(),
-            "cargo": self.cargo_relator.get(),
-            "masp": self.masp_relator.get()
+            "nome": self.nome_relator.get().strip(),
+            "cargo": self.cargo_relator.get().strip(),
+            "masp": self.masp_relator.get().strip()
         }
+        
+        dados_aparelho = {
+            "titular_nome": self.titular_nome.get().strip(),
+            "titular_cpf": self.titular_cpf.get().strip(),
+            "titular_rg": self.titular_rg.get().strip(),
+            "aparelho_marca": self.aparelho_marca.get().strip(),
+            "aparelho_modelo": self.aparelho_modelo.get().strip(),
+            "aparelho_serial": self.aparelho_serial.get().strip(),
+            "aparelho_imei": self.aparelho_imei.get().strip(),
+            "aparelho_linha": self.aparelho_linha.get().strip()
+        }
+        
+        lista_alvos = []
+        for var_nome, var_sufixo in self.alvos_vars:
+            if var_nome.get().strip():
+                lista_alvos.append({
+                    "nome": var_nome.get().strip(),
+                    "sufixo": var_sufixo.get().strip()
+                })
 
         nomes_extras = {
             "relatorio": nome_limpo_relatorio,
-            "titular_nome": self.nome_titular.get(),
-            "titular_sufixo": self.sufixo_titular.get().strip(),
-            "alvo2_nome": self.nome_alvo2.get(),
-            "alvo2_sufixo": self.sufixo_alvo2.get().strip()
+            "alvos": lista_alvos,
+            "logo": self.caminho_logo.get().strip() 
         }
 
-        thread = threading.Thread(target=self.executar_processo_background, args=(entrada, saida, dados_certidao, nomes_extras))
+        thread = threading.Thread(target=self.executar_processo_background, args=(entrada, saida, dados_certidao, dados_aparelho, nomes_extras))
         thread.start()
 
-    def executar_processo_background(self, entrada, saida, dados_certidao, nomes_extras):
+    def executar_processo_background(self, entrada, saida, dados_certidao, dados_aparelho, nomes_extras):
         try:
             processar_exportacao(
                 entrada, 
@@ -1262,8 +1525,9 @@ class AppWhatsAppForensic:
                 self.usar_transcricao_audio.get(), 
                 self.usar_transcricao_video.get(),
                 self.modelo_selecionado.get(),
-                self.incluir_certidao.get(),
+                True,
                 dados_certidao,
+                dados_aparelho,
                 nomes_extras,
                 self.atualizar_progresso
             )
@@ -1274,16 +1538,25 @@ class AppWhatsAppForensic:
     def finalizar_sucesso(self, pasta_saida):
         self.barra_progresso["value"] = 100
         self.label_status.config(text="100% - Processamento Concluído!")
-        self.btn_iniciar.config(state="normal", bg="#128C7E")
-        messagebox.showinfo("Sucesso", "Procedimento concluído!\n\nVerifique o PDF Análise e o HTML na pasta de destino.")
+        self.btn_iniciar.config(state="normal", bg="#00a884")
+        messagebox.showinfo("Sucesso", "Procedimento concluído!\n\nVerifique os arquivos PDF e HTML na pasta de destino.")
         os.startfile(pasta_saida)
 
     def finalizar_erro(self, erro_msg):
         self.label_status.config(text="Erro durante o processamento.")
-        self.btn_iniciar.config(state="normal", bg="#128C7E")
+        self.btn_iniciar.config(state="normal", bg="#00a884")
         messagebox.showerror("Erro de Processamento", f"Ocorreu um erro:\n{erro_msg}")
 
 if __name__ == "__main__":
+    # --- CÓDIGO PARA FORÇAR O ÍCONE NA BARRA DE TAREFAS DO WINDOWS ---
+    if os.name == 'nt':
+        try:
+            myappid = 'whatsconstructor.forense.1.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+    # -----------------------------------------------------------------
+    
     root = tk.Tk()
     app = AppWhatsAppForensic(root)
     root.mainloop()
