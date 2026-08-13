@@ -123,6 +123,12 @@ def encontrar_arquivo(nome_procurado, pasta_raiz):
                 
     return None, nome_limpo
 
+def texto_pdf(texto):
+    """Filtra emojis e caracteres especiais não suportados pelas fontes padrão do PDF"""
+    if not texto: return ""
+    # Força a conversão para a codificação da fonte Helvetica, substituindo emojis por '?'
+    return str(texto).encode('windows-1252', 'replace').decode('windows-1252')
+
 def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_aparelho, registro_hashes, data_hora_atual, modelo_ia, nome_html, nomes_extras):
     pdf = RelatorioForensePDF()
     pdf.logo_path = nomes_extras.get("logo", "") 
@@ -137,16 +143,16 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_ap
         pdf.cell(0, 10, f'{item_num}. IDENTIFICAÇÃO DO DISPOSITIVO E TITULAR', 0, 1)
         pdf.set_font('helvetica', '', 10)
         
-        if dados_aparelho.get('titular_nome'): pdf.cell(0, 6, f"Titular/Proprietário: {dados_aparelho['titular_nome']}", 0, 1)
-        if dados_aparelho.get('titular_cpf'): pdf.cell(0, 6, f"CPF: {dados_aparelho['titular_cpf']}", 0, 1)
-        if dados_aparelho.get('titular_rg'): pdf.cell(0, 6, f"RG: {dados_aparelho['titular_rg']}", 0, 1)
+        if dados_aparelho.get('titular_nome'): pdf.cell(0, 6, texto_pdf(f"Titular/Proprietário: {dados_aparelho['titular_nome']}"), 0, 1)
+        if dados_aparelho.get('titular_cpf'): pdf.cell(0, 6, texto_pdf(f"CPF: {dados_aparelho['titular_cpf']}"), 0, 1)
+        if dados_aparelho.get('titular_rg'): pdf.cell(0, 6, texto_pdf(f"RG: {dados_aparelho['titular_rg']}"), 0, 1)
         
         marca_modelo = f"{dados_aparelho.get('aparelho_marca', '')} {dados_aparelho.get('aparelho_modelo', '')}".strip()
-        if marca_modelo: pdf.cell(0, 6, f"Aparelho: {marca_modelo}", 0, 1)
+        if marca_modelo: pdf.cell(0, 6, texto_pdf(f"Aparelho: {marca_modelo}"), 0, 1)
         
-        if dados_aparelho.get('aparelho_imei'): pdf.cell(0, 6, f"IMEI: {dados_aparelho['aparelho_imei']}", 0, 1)
-        if dados_aparelho.get('aparelho_serial'): pdf.cell(0, 6, f"Nº de Série: {dados_aparelho['aparelho_serial']}", 0, 1)
-        if dados_aparelho.get('aparelho_linha'): pdf.cell(0, 6, f"Linha Telefônica: {dados_aparelho['aparelho_linha']}", 0, 1)
+        if dados_aparelho.get('aparelho_imei'): pdf.cell(0, 6, texto_pdf(f"IMEI: {dados_aparelho['aparelho_imei']}"), 0, 1)
+        if dados_aparelho.get('aparelho_serial'): pdf.cell(0, 6, texto_pdf(f"Nº de Série: {dados_aparelho['aparelho_serial']}"), 0, 1)
+        if dados_aparelho.get('aparelho_linha'): pdf.cell(0, 6, texto_pdf(f"Linha Telefônica: {dados_aparelho['aparelho_linha']}"), 0, 1)
         
         pdf.ln(5)
         item_num += 1
@@ -167,16 +173,16 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_ap
         "dedicado (identificado pelo sufixo '_Hashes_Gerais.txt'), que centraliza o resumo criptográfico dos "
         "principais artefatos processados. Transcrições de áudio, quando aplicáveis, são processadas offline."
     )
-    pdf.multi_cell(0, 5, metodologia_texto)
+    pdf.multi_cell(0, 5, texto_pdf(metodologia_texto))
     pdf.ln(5)
     item_num += 1
 
     pdf.set_font('helvetica', 'B', 12)
     pdf.cell(0, 10, f'{item_num}. INFORMAÇÕES DO PROCESSAMENTO', 0, 1)
     pdf.set_font('helvetica', '', 10)
-    pdf.cell(0, 6, f"Data e Hora do Procedimento: {data_hora_atual}", 0, 1)
-    pdf.cell(0, 6, f"Modelo de IA Utilizado (Transcrição): {modelo_ia if modelo_ia else 'Nenhum / Não solicitado'}", 0, 1)
-    pdf.cell(0, 6, f"Ficheiro de Leitura Gerado: {nome_html}", 0, 1)
+    pdf.cell(0, 6, texto_pdf(f"Data e Hora do Procedimento: {data_hora_atual}"), 0, 1)
+    pdf.cell(0, 6, texto_pdf(f"Modelo de IA Utilizado (Transcrição): {modelo_ia if modelo_ia else 'Nenhum / Não solicitado'}"), 0, 1)
+    pdf.cell(0, 6, texto_pdf(f"Ficheiro de Leitura Gerado: {nome_html}"), 0, 1)
     pdf.ln(5)
     item_num += 1
 
@@ -185,13 +191,13 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_ap
     pdf.set_font('courier', '', 8)
     
     for registro in registro_hashes:
-        pdf.multi_cell(0, 4, registro)
+        pdf.multi_cell(0, 4, texto_pdf(registro))
     item_num += 1
     
     if incluir_certidao:
         pdf.ln(15)
         pdf.set_font('helvetica', 'B', 12)
-        pdf.cell(0, 10, f'{item_num}. CERTIDÃO DE EXTRAÇÃO E INDEXAÇÃO', 0, 1)
+        pdf.cell(0, 10, f'{item_num}. CERTIDÃO DE INDEXAÇÃO', 0, 1)
         pdf.set_font('helvetica', '', 10)
         
         if tem_dados_aparelho:
@@ -226,7 +232,7 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_ap
                 f"Nada mais havendo a constar, lavra-se o presente relatório que segue devidamente assinado."
             )
             
-        pdf.multi_cell(0, 5, certidao_texto)
+        pdf.multi_cell(0, 5, texto_pdf(certidao_texto))
         
         if pdf.get_y() > 230:
             pdf.add_page()
@@ -242,20 +248,20 @@ def gerar_pdf_pericial(caminho_saida, incluir_certidao, dados_certidao, dados_ap
         data_extenso = f"{partes_data[0]} de {meses[partes_data[1]]} de {partes_data[2]}"
         
         pdf.set_font('helvetica', '', 11)
-        pdf.cell(0, 5, data_extenso, 0, 1, 'R')
+        pdf.cell(0, 5, texto_pdf(data_extenso), 0, 1, 'R')
         pdf.ln(25)
         
         pdf.line(55, pdf.get_y(), 155, pdf.get_y())
         pdf.ln(2)
         pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
+        pdf.cell(0, 5, texto_pdf(f"{dados_certidao['nome'].upper()}"), 0, 1, 'C')
         
         pdf.set_font('helvetica', '', 10)
         detalhes_cargo = []
         if dados_certidao['cargo']: detalhes_cargo.append(dados_certidao['cargo'])
         if dados_certidao['masp']: detalhes_cargo.append(f"MASP/Matrícula: {dados_certidao['masp']}")
         if detalhes_cargo:
-            pdf.cell(0, 5, " - ".join(detalhes_cargo), 0, 1, 'C')
+            pdf.cell(0, 5, texto_pdf(" - ".join(detalhes_cargo)), 0, 1, 'C')
         
     pdf.output(caminho_saida)
 
@@ -266,22 +272,22 @@ def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certida
     pdf.set_auto_page_break(auto=True, margin=15)
     
     pdf.set_font('helvetica', 'B', 14)
-    pdf.cell(0, 10, 'ANEXO - RELAÇÃO DE INTEGRANTES DA CONVERSA', 0, 1, 'C')
+    pdf.cell(0, 10, texto_pdf('ANEXO - RELAÇÃO DE INTEGRANTES DA CONVERSA'), 0, 1, 'C')
     pdf.ln(5)
     
     pdf.set_font('helvetica', '', 10)
-    pdf.cell(0, 6, f"Data/Hora de Geração: {data_hora_atual}", 0, 1)
-    pdf.cell(0, 6, f"Referência da Evidência: {nomes_extras['relatorio']}", 0, 1)
+    pdf.cell(0, 6, texto_pdf(f"Data/Hora de Geração: {data_hora_atual}"), 0, 1)
+    pdf.cell(0, 6, texto_pdf(f"Referência da Evidência: {nomes_extras['relatorio']}"), 0, 1)
     pdf.ln(10)
     
     pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 8, f"Total de Interlocutores Identificados no Relatório: {len(remetentes)}", 0, 1)
+    pdf.cell(0, 8, texto_pdf(f"Total de Interlocutores Identificados no Relatório: {len(remetentes)}"), 0, 1)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
     
     pdf.set_font('helvetica', '', 11)
     for i, rem in enumerate(sorted(remetentes), 1):
-        pdf.cell(0, 8, f"{i}. {rem}", 0, 1)
+        pdf.cell(0, 8, texto_pdf(f"{i}. {rem}"), 0, 1)
         
     if incluir_certidao:
         if pdf.get_y() > 230:
@@ -298,20 +304,20 @@ def gerar_pdf_integrantes(caminho_saida, remetentes, nomes_extras, dados_certida
         data_extenso = f"{partes_data[0]} de {meses[partes_data[1]]} de {partes_data[2]}"
         
         pdf.set_font('helvetica', '', 11)
-        pdf.cell(0, 5, data_extenso, 0, 1, 'R')
+        pdf.cell(0, 5, texto_pdf(data_extenso), 0, 1, 'R')
         pdf.ln(25) 
 
         pdf.line(55, pdf.get_y(), 155, pdf.get_y())
         pdf.ln(2)
         pdf.set_font('helvetica', 'B', 10)
-        pdf.cell(0, 5, f"{dados_certidao['nome'].upper()}", 0, 1, 'C')
+        pdf.cell(0, 5, texto_pdf(f"{dados_certidao['nome'].upper()}"), 0, 1, 'C')
         
         pdf.set_font('helvetica', '', 10)
         detalhes_cargo = []
         if dados_certidao['cargo']: detalhes_cargo.append(dados_certidao['cargo'])
         if dados_certidao['masp']: detalhes_cargo.append(f"MASP/Matrícula: {dados_certidao['masp']}")
         if detalhes_cargo:
-            pdf.cell(0, 5, " - ".join(detalhes_cargo), 0, 1, 'C')
+            pdf.cell(0, 5, texto_pdf(" - ".join(detalhes_cargo)), 0, 1, 'C')
         
     pdf.output(caminho_saida)
 
@@ -340,11 +346,12 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     mensagens = []
     arquivos_midia_referenciados = []
 
-    regex_android = r"^(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*?): (.*)"
-    regex_ios = r"^\[(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}:\d{2})\] (.*?): (.*)"
-    regex_android_sys = r"^(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*)"
-    regex_ios_sys = r"^\[(\d{2}/\d{2}/\d{4}[ ,]+\d{2}:\d{2}:\d{2})\] (.*)"
-
+    # Atualizado para aceitar anos com 2 ou 4 dígitos (\d{2,4})
+    regex_android = r"^(\d{2}/\d{2}/\d{2,4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*?): (.*)"
+    regex_ios = r"^\[(\d{2}/\d{2}/\d{2,4}[ ,]+\d{2}:\d{2}:\d{2})\] (.*?): (.*)"
+    regex_android_sys = r"^(\d{2}/\d{2}/\d{2,4}[ ,]+\d{2}:\d{2}(?::\d{2})?) - (.*)"
+    regex_ios_sys = r"^\[(\d{2}/\d{2}/\d{2,4}[ ,]+\d{2}:\d{2}:\d{2})\] (.*)"
+    
     with open(arquivo_txt, 'r', encoding='utf-8') as f:
         for linha in f:
             linha_limpa = re.sub(r'[\u200e\u200f\u202a-\u202e\u200b]', '', linha).rstrip('\r\n')
@@ -544,7 +551,7 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
     if callback_progresso: callback_progresso(total_passos, total_passos, "A gerar relatórios finais...")
 
     nome_arquivo_html = f"{nomes_extras['relatorio']}_Leitor_Forense.html"
-    nome_arquivo_pdf = f"{nomes_extras['relatorio']}_Relatorio_Análise.pdf"
+    nome_arquivo_pdf = f"{nomes_extras['relatorio']}_Relatorio_Técnico_Indexacao_Extracao.pdf"
     nome_arquivo_pdf_integrantes = f"{nomes_extras['relatorio']}_Relacao_Integrantes.pdf"
 
     caminho_html = os.path.join(pasta_saida, nome_arquivo_html)
@@ -595,13 +602,13 @@ def processar_exportacao(pasta_entrada, pasta_saida, transcrever_audio, transcre
         f"3. ANEXO - RELAÇÃO DE INTEGRANTES (Documento Auxiliar)\n"
         f"   Nome: {nome_arquivo_pdf_integrantes}\n"
         f"   Hash: {hash_pdf_integrantes}\n\n"
-        f"4. RELATÓRIO ANÁLISE (Documento Formal)\n"
+        f"4. RELATÓRIO TÉCNICO EXTRAÇÃO E INDEXAÇÃO (Documento Formal)\n"
         f"   Nome: {nome_arquivo_pdf}\n"
         f"   Hash: {hash_pdf}\n\n"
         f"===============================================================\n"
         f"Nota: A listagem individual detalhada constando as assinaturas \n"
         f"digitais de todas as mídias anexas (imagens, áudios, vídeos) \n"
-        f"encontra-se formalizada dentro do Relatório Análise (PDF).  \n"
+        f"encontra-se formalizada dentro do Relatório Técnico (PDF).  \n"
         f"===============================================================\n"
     )
     
