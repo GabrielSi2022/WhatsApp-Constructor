@@ -756,7 +756,7 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             .btn-clear {{ background-color: #374151; color: #e9edef; }}
             .btn-clear:hover {{ background-color: #ef4444; color: white; }}
             
-            .btn-pdf {{ background-color: #005c4b; color: white; margin-left: auto; }}
+            .btn-pdf {{ background-color: #005c4b; color: white; }}
             .btn-pdf:hover {{ background-color: #00735e; }}
             
             .date-label {{ color: #8696a0; font-size: 13px; font-weight: 500; }}
@@ -781,6 +781,8 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             .media-box img, .media-box video {{ max-width: 100%; max-height: 360px; border-radius: 6px; display: block; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }}
             .media-box audio {{ width: 280px; display: block; margin-top: 5px; }}
             
+            .print-media-label {{ display: none; font-size: 12.5px; color: #00a884; font-weight: 600; margin-bottom: 4px; word-break: break-all; }}
+            
             .msg-highlight {{ border: 2px solid #00a884 !important; background-color: rgba(0, 168, 132, 0.15) !important; }}
             .msg-active {{ box-shadow: 0 0 15px 5px rgba(0, 168, 132, 0.4) !important; }}
             
@@ -800,15 +802,25 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
             }}
             
             @media print {{
+                * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }}
                 .header, .search-bar-container, .tab-buttons, .sidebar {{ display: none !important; }}
-                body {{ background-color: white !important; color: black !important; }}
-                .chat-container, .chat-area {{ padding: 0 !important; max-width: 100% !important; }}
+                body {{ background-color: #111b21 !important; color: #e9edef !important; }}
+                .main-wrapper {{ display: block !important; }}
+                .chat-area {{ padding: 0 !important; max-width: 100% !important; margin: 0 !important; }}
                 .msg-wrapper {{ page-break-inside: avoid; }}
-                .mensagem {{ box-shadow: none !important; border: 1px solid #ddd; background-color: white !important; }}
-                .texto, .timestamp, .remetente {{ color: black !important; }}
                 .media-box audio, .media-box video {{ display: none !important; }}
+                .print-media-label {{ display: block !important; }} 
                 .tab-content {{ display: block !important; }} 
                 #tab-galeria {{ display: none !important; }} 
+
+                /* --- MODO CLARO (ECONOMIA DE TINTA) --- */
+                body.print-light {{ background-color: white !important; color: black !important; }}
+                body.print-light .mensagem {{ background-color: white !important; color: black !important; border: 1px solid #ccc !important; box-shadow: none !important; }}
+                body.print-light .texto {{ color: black !important; }}
+                body.print-light .timestamp {{ color: #555 !important; }}
+                body.print-light .remetente {{ color: #000 !important; font-weight: 700 !important; }}
+                body.print-light .msg-sistema {{ background-color: #f5f5f5 !important; color: #333 !important; border: 1px solid #ddd !important; }}
+                body.print-light .caixa-transcricao {{ background-color: #f9f9f9 !important; color: #222 !important; border-left: 4px solid #00a884 !important; }}
             }}
         </style>
     </head>
@@ -862,7 +874,8 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
                             <button class="btn-nav btn-clear" onclick="limparFiltros()">Limpar</button>
                         </div>
                         
-                        <div class="filter-group" style="margin-left: auto;">
+                        <div class="filter-group" style="margin-left: auto; gap: 10px; display: flex;">
+                            <button id="btnTogglePrint" class="btn-nav" style="background-color: #2a3942; color: #e9edef; border: 1px solid #8696a0;" onclick="togglePrintMode()">🔳 Fundo PDF: Escuro</button>
                             <button class="btn-nav btn-pdf" onclick="window.print()">🖨️ Salvar Chat PDF</button>
                         </div>
                     </div>
@@ -905,10 +918,10 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
                     chat_html += f'<div class="media-box"><a href="{nome_arq}" target="_blank"><img src="{nome_arq}" alt="Imagem" /></a></div>'
                     galeria_html += f'<a href="{nome_arq}" target="_blank"><img src="{nome_arq}" loading="lazy"/></a>'
                 elif extensao.endswith(('.mp4', '.mov', '.avi')):
-                    chat_html += f'<div class="media-box"><video controls><source src="{nome_arq}"></video></div>'
+                    chat_html += f'<div class="media-box"><span class="print-media-label">🎥 Vídeo anexado: {nome_arq}</span><video controls><source src="{nome_arq}"></video></div>'
                     galeria_html += f'<video controls preload="metadata"><source src="{nome_arq}"></video>'
                 elif extensao.endswith(('.opus', '.mp3', '.ogg', '.wav', '.m4a')):
-                    chat_html += f'<div class="media-box"><audio controls><source src="{nome_arq}"></audio></div>'
+                    chat_html += f'<div class="media-box"><span class="print-media-label">🎵 Áudio anexado: {nome_arq}</span><audio controls><source src="{nome_arq}"></audio></div>'
                     galeria_html += f'<audio controls preload="metadata"><source src="{nome_arq}"></audio>'
                 else:
                     chat_html += f'<div class="media-box"><div class="texto">📎 <a href="{nome_arq}" target="_blank">{nome_arq}</a></div></div>'
@@ -951,6 +964,25 @@ def gerar_html(lista_mensagens, caminho_saida, mapa_nomes, nomes_extras, remeten
                 document.getElementById('tab-' + tabName).classList.add('active');
                 document.getElementById('btn-tab-' + tabName).classList.add('active');
             }
+
+            // --- CONTROLE DE MODO IMPRESSÃO CLARO/ESCURO ---
+            let printDark = true;
+            function togglePrintMode() {
+                printDark = !printDark;
+                let btn = document.getElementById("btnTogglePrint");
+                if(printDark) {
+                    document.body.classList.remove("print-light");
+                    btn.innerText = "🔳 Fundo PDF: Escuro";
+                    btn.style.backgroundColor = "#2a3942";
+                    btn.style.color = "#e9edef";
+                } else {
+                    document.body.classList.add("print-light");
+                    btn.innerText = "🔲 Fundo PDF: Claro";
+                    btn.style.backgroundColor = "#e9edef";
+                    btn.style.color = "#111b21";
+                }
+            }
+            // ------------------------------------------------
 
             let matches = [];
             let currentIndex = -1;
