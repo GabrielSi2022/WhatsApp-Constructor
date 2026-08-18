@@ -2,6 +2,15 @@
 
 Ferramenta desenvolvida em Python para processamento, indexação e auditoria de extrações lógicas do WhatsApp. O sistema processa exportações nativas (`.txt` e mídias), reconstrói a cadeia de leitura em uma interface HTML interativa, calcula assinaturas digitais (SHA-256) e realiza transcrição de mídias offline utilizando Inteligência Artificial.
 
+## 📥 Download (Executável)
+Para usar o software sem precisar instalar o Python ou configurar códigos, faça o download da versão executável mais recente clicando no link abaixo:
+
+👉 **[BAIXAR WHATSAPP CONSTRUCTOR (Versão Mais Recente)](https://github.com/GabrielSi2022/WhatsApp-Constructor/releases/download/V1.0/whatsconstructor.exe)**
+
+*(Baixe o arquivo `.exe` ou `.zip` listado na aba **Assets** da página de lançamento).*
+
+---
+
 ## 💻 Visão Técnica
 O software atua como um parser e construtor forense. Ele não realiza a extração física do dispositivo, mas sim o tratamento do dado bruto exportado, garantindo a imutabilidade da prova através de espelhamento criptográfico e gerando relatórios formatados para uso em investigações e processos judiciais.
 
@@ -24,7 +33,7 @@ O software atua como um parser e construtor forense. Ele não realiza a extraç�
 | **Construtor PDF** | Gera o Relatório de Análise e a Relação de Integrantes. Possui tratamento de encodagem para evitar crashes da biblioteca `fpdf2` ao processar Emojis presentes nos nomes de contatos. |
 
 ## 📦 Instruções de Build (Compilação)
-Para gerar o executável standalone (`.exe`) para Windows, garantindo que todas as dependências ocultas do Whisper, a pasta de logomarcas institucionais e o FFmpeg sejam embutidos, utilize o comando abaixo:
+Para gerar o executável standalone (`.exe`) para Windows a partir do código fonte, garantindo que todas as dependências ocultas do Whisper, a pasta de logomarcas institucionais e o FFmpeg sejam embutidos, utilize o comando abaixo:
 
 ```cmd
 pyinstaller --noconfirm --onefile --windowed --icon="icone.ico" --add-binary "ffmpeg.exe;." --add-data "logos;logos" --add-data "icone.ico;." --collect-data whisper whatsconstructor.py
