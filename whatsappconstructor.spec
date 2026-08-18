@@ -6,7 +6,7 @@ datas += collect_data_files('whisper')
 
 
 a = Analysis(
-    ['whatsconstructor.py'],
+    ['whatsappconstructor.py'],
     pathex=[],
     binaries=[('ffmpeg.exe', '.')],
     datas=datas,
@@ -26,7 +26,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='whatsconstructor',
+    name='whatsappconstructor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

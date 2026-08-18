@@ -34,7 +34,7 @@ O software atua como um parser e construtor forense. Ele não realiza a extraç�
 Para gerar o executável standalone (`.exe`) para Windows a partir do código fonte, garantindo que todas as dependências ocultas do Whisper, a pasta de logomarcas institucionais e o FFmpeg sejam embutidos, utilize o comando abaixo:
 
 ```cmd
-pyinstaller --noconfirm --onefile --windowed --icon="icone.ico" --add-binary "ffmpeg.exe;." --add-data "logos;logos" --add-data "icone.ico;." --collect-data whisper whatsconstructor.py
+pyinstaller --noconfirm --onefile --windowed --icon="icone.ico" --add-binary "ffmpeg.exe;." --add-data "logos;logos" --add-data "icone.ico;." --collect-data whisper whatsappconstructor.py
 ```
 
 ### Requisitos para o Build:
