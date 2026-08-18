@@ -28,13 +28,12 @@ Para gerar o executável standalone (`.exe`) para Windows, garantindo que todas 
 
 ```cmd
 pyinstaller --noconfirm --onefile --windowed --icon="icone.ico" --add-binary "ffmpeg.exe;." --add-data "logos;logos" --add-data "icone.ico;." --collect-data whisper whatsconstructor.py
+```
 
-Requisitos para o Build:
-O arquivo ffmpeg.exe deve estar no diretório raiz do projeto.
+### Requisitos para o Build:
+*   O arquivo `ffmpeg.exe` deve estar no diretório raiz do projeto.
+*   A pasta `logos/` deve existir no diretório raiz contendo as imagens institucionais prévias.
+*   O arquivo `icone.ico` deve estar no diretório raiz.
 
-A pasta logos/ deve existir no diretório raiz contendo as imagens institucionais prévias.
-
-O arquivo icone.ico deve estar no diretório raiz.
-
-⚖️ Nota de Uso
+## ⚖️ Nota de Uso
 Este software foi projetado para auxiliar autoridades e peritos na visualização e documentação de evidências digitais extraídas de forma lícita e com autorização prévia.
