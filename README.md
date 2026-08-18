@@ -7,8 +7,6 @@ Para usar o software sem precisar instalar o Python ou configurar códigos, faç
 
 👉 **[BAIXAR WHATSAPP CONSTRUCTOR (Versão Mais Recente)](https://github.com/GabrielSi2022/WhatsApp-Constructor/releases/download/V1.0/whatsconstructor.exe)**
 
-*(Baixe o arquivo `.exe` ou `.zip` listado na aba **Assets** da página de lançamento).*
-
 ---
 
 ## 💻 Visão Técnica
